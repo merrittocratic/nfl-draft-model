@@ -22,11 +22,33 @@
 - Group sizes: db=761, dl=719, wr_te=702, ol=623, lb=419, rb=344, qb=178 — all above 300 floor
 - Mean w_av=18.9, median=11, 10.9% zero AV — right-skewed, realistic
 
+---
+
+### Session 2 — 2026-03-27
+**Completed:**
+- [x] `02_feature_engineering.R` runs cleanly → `data/02_draft_features.rds`
+  - Fixed `ht` column: nflreadr returns height as `"6-2"` strings — added conversion to numeric inches before z-score computation
+- [x] **Outcome metric upgrade:** PFR account obtained, pivoting from `w_av` to true 4-year windowed AV via manual CSV exports
+  - PFR exports player-season-team rows (one row per team per season per player)
+  - Pagination limit: 200 rows per export; filter by draft year + season
+  - Pull strategy: 15 draft years × 4 seasons = **60 CSVs**
+  - Naming convention: `pfr_av_d{draft_year}_s{season}.csv` (e.g., `pfr_av_d2006_s2007.csv`)
+  - Drop CSVs in `data/pfr_av_raw/` (directory created)
+- [x] `01b_scrape_av.R` rewritten as CSV ingestion script (not a scraper)
+  - Handles multi-team seasons (sums AV across teams within player-season)
+  - Computes 4-year total AV + year-by-year features (`av_yr1`–`av_yr4`)
+  - Additional features: `seasons_active_4yr`, `n_teams_4yr`
+  - Output: `data/01b_av_4yr.rds`
+- [x] `.gitignore` fixed (was named `gitignore` without the dot)
+- [x] All pipeline scripts committed and pushed to GitHub (merrittocratic/nfl-draft-model)
+
 **Next session starts here:**
-- Run `02_feature_engineering.R` (source it in Positron console, not Rscript)
-- Check outcome distribution (expect ~15–20% boom/bust)
-- Check program pipeline feature computation and leave-one-out correctness
-- Then proceed to 03, 04, 05 in order
+1. Finish collecting the 60 PFR CSVs into `data/pfr_av_raw/` (in progress — may take 1–2 days)
+2. Run `01b_scrape_av.R` and inspect output — verify `av_4yr_total` distribution looks reasonable
+3. Update `01_load_data.R` to join `data/01b_av_4yr.rds` on `pfr_id` and replace `av_4yr = w_av` with `av_4yr = av_4yr_total`
+4. Re-run `02_feature_engineering.R` with true 4-year AV as the outcome
+5. Check outcome distribution (expect ~15–20% boom/bust)
+6. Proceed to `03_model_spec.R` → `04_train_evaluate.R`
 
 ---
 
@@ -35,11 +57,14 @@ The 2026 NFL Draft is April 24–26, 2026 (~30 days away). The pipeline code exi
 
 Key gaps blocking a working model:
 1. ~~Environment not validated~~ — **RESOLVED**
-2. ~~`career_av` proxy~~ — **RESOLVED**: `w_av` adopted as intentional outcome metric
+2. ~~`career_av` proxy~~ — **RESOLVED**: true 4-year AV via PFR CSV exports (in progress)
 3. ~~Column name mismatches in `01_load_data.R`~~ — **RESOLVED**
 4. ~~Combine join fuzziness~~ — **RESOLVED**: fuzzyjoin implemented
-5. Conference mapping is a placeholder
-6. 2026 mock draft picks not yet sourced
+5. ~~`ht` stored as string~~ — **RESOLVED**: converted to numeric inches in `02_feature_engineering.R`
+6. **PFR CSV collection in progress** — 60 CSVs needed, drop in `data/pfr_av_raw/`
+7. `01_load_data.R` needs update to join `01b_av_4yr.rds` once CSVs are collected
+8. Conference mapping is a placeholder
+9. 2026 mock draft picks not yet sourced
 
 ---
 
@@ -183,16 +208,17 @@ From CLAUDE.md TODO #8:
 
 ## Execution Order
 
-| Priority | Task | Est. Time | Blocker? |
-|----------|------|-----------|----------|
-| 1 | Phase 1: Environment setup | 1–2 hours | Yes — everything runs on this |
-| 2 | Phase 2a–2b: Data load + fuzzy join | 2 hours | Yes — needed for all downstream |
-| 3 | Phase 2c: 01b scraper (run overnight) | 3 hours runtime | Yes for accurate labels |
-| 4 | Phase 3: Feature engineering validation | 1–2 hours | Yes |
-| 5 | Phase 4: Model training | 4–8 hours | Yes |
-| 6 | Phase 5: 2026 scoring | 1 hour | Needs mock picks |
-| 7 | Phase 6: Pro day integration | 2–4 hours | No — enhancement |
-| 8 | Phase 7: Diagnostics + viz | 2–3 hours | No — but high value |
+| Priority | Task | Status | Blocker? |
+|----------|------|--------|----------|
+| 1 | Phase 1: Environment setup | ✅ Done | — |
+| 2 | Phase 2a–2b: Data load + fuzzy join | ✅ Done | — |
+| 3 | Phase 2c: 01b PFR CSV ingestion | 🔄 In progress — collecting 60 CSVs | Yes for accurate labels |
+| 4 | Update 01_load_data.R to join 01b output | ⏳ Waiting on CSVs | Yes |
+| 5 | Phase 3: Feature engineering validation | 🔄 Partial — ran once with w_av, re-run needed after 01b | Yes |
+| 6 | Phase 4: Model training | ⏳ Not started | Yes |
+| 7 | Phase 5: 2026 scoring | ⏳ Not started | Needs mock picks |
+| 8 | Phase 6: Pro day integration | ⏳ Not started | No — enhancement |
+| 9 | Phase 7: Diagnostics + viz | ⏳ Not started | No — but high value |
 
 ---
 
@@ -208,6 +234,6 @@ From CLAUDE.md TODO #8:
 ---
 
 ## Open Questions
-1. **01b timing:** Run overnight now, or proceed with `career_av` proxy for one quick validation pass first?
-2. **TabPFN:** Is a Python virtualenv already set up, or starting fresh?
-3. **Mock picks source:** Build manually from consensus mocks, or build a pick projection layer?
+1. **Mock picks source:** Build manually from consensus mocks (Jeremiah, Kiper, McShay + 2), or build a pick projection layer?
+2. **Conference mapping:** Hand-build lookup from cfbfastR, or use a static CSV? Needs realignment handling (Texas → SEC 2024, etc.)
+3. **01_load_data.R join key:** nflreadr draft picks have `pfr_player_id` — confirm this matches `Player-additional` slug from PFR exports before running 01b join.
