@@ -1,0 +1,23 @@
+# Data (regenerated from scripts)
+data/*.rds
+data/*.csv
+
+# R artifacts
+.Rhistory
+.Rdata
+.Rproj.user/
+*.Rproj
+
+# Model outputs (large binary files)
+output/models/*.rds
+
+# PFR download artifacts
+sportsref_download*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.Renviron
