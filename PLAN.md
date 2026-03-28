@@ -42,11 +42,24 @@
 - [x] `.gitignore` fixed (was named `gitignore` without the dot)
 - [x] All pipeline scripts committed and pushed to GitHub (merrittocratic/nfl-draft-model)
 
+---
+
+### Session 3 — 2026-03-28
+**Completed:**
+- [x] Validated 2006 draft class CSVs (4 files, 725 rows across 4 seasons)
+  - Column structure confirmed correct — `AV...3` and `AV...14` auto-renamed as expected
+  - Both AV columns are identical (single-season filter means season AV = only AV present)
+  - Zero missing `Player-additional` (pfr_id) values — join key is clean
+  - No multi-team player-seasons in 2006 class
+  - 224 unique players (vs ~255 picks — delta is kickers/punters/LSs, expected)
+  - Row counts decline across seasons (194→192→169→166) — realistic attrition
+
 **Next session starts here:**
-1. Finish collecting the 60 PFR CSVs into `data/pfr_av_raw/` (in progress — may take 1–2 days)
-2. Run `01b_scrape_av.R` and inspect output — verify `av_4yr_total` distribution looks reasonable
-3. Update `01_load_data.R` to join `data/01b_av_4yr.rds` on `pfr_id` and replace `av_4yr = w_av` with `av_4yr = av_4yr_total`
-4. Re-run `02_feature_engineering.R` with true 4-year AV as the outcome
+1. Finish collecting remaining 56 PFR CSVs (2007–2020 draft classes, 4 seasons each)
+2. Run `source("01b_scrape_av.R")` — verify `av_4yr_total` distribution looks reasonable
+3. Update `01_load_data.R` to join `data/01b_av_4yr.rds` on `pfr_id`, replace `av_4yr = w_av` with `av_4yr = av_4yr_total`
+   - Verify join key: confirm `pfr_player_id` in nflreadr matches `Player-additional` slug from PFR
+4. Re-run `02_feature_engineering.R` with true 4-year AV
 5. Check outcome distribution (expect ~15–20% boom/bust)
 6. Proceed to `03_model_spec.R` → `04_train_evaluate.R`
 
