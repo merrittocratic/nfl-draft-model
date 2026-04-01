@@ -46,21 +46,28 @@ healthcare analytics — this project is fully separate. Preferences:
 - **Rationale:** Regression-first gives more flexibility to define thresholds
   after the fact and produces richer output for content than pure classification
 
-### 7 Tiered Sub-Models
-| Group  | Positions | Rationale |
-|--------|-----------|-----------|
-| qb     | QB        | Unique evaluation features (passing production, arm metrics) |
-| wr_te  | WR, TE    | Shared receiving/route-running evaluation DNA |
-| dl     | EDGE, IDL | Pass rush production + athletic testing |
-| ol     | OT, IOL   | Blocking metrics, fundamentally different from skill positions |
-| db     | CB, S     | Coverage + ball production |
-| lb     | LB        | Hybrid coverage + run defense |
-| rb     | RB        | Rushing + receiving + athleticism |
+### 8 Tiered Sub-Models
+| Group  | Positions   | n (train) | Rationale |
+|--------|-------------|-----------|-----------|
+| qb     | QB          | —         | Unique evaluation features (passing production, arm metrics) |
+| wr_te  | WR, TE      | —         | Shared receiving/route-running evaluation DNA |
+| dl     | EDGE, IDL   | —         | Pass rush production + athletic testing |
+| ol     | OT, IOL     | —         | Blocking metrics, fundamentally different from skill positions |
+| cb     | CB          | ~162      | Split from S — high bust rate (~14%), hard to evaluate, scheme-dependent |
+| s      | S, FS, SS   | ~545      | Split from CB — safer pick profile (~12% boom, ~8% bust), athleticism-driven |
+| lb     | LB          | —         | Hybrid coverage + run defense |
+| rb     | RB          | —         | Rushing + receiving + athleticism |
+
+**CB/S split rationale:** Outcome profiles are meaningfully different — CBs bust
+at nearly 3x their boom rate; Safeties are net positive. Combining them masked
+signal. Sample sizes support the split (S=545, CB=162). CB's small n is
+acceptable for tree models and TabPFN specifically. Also a strong content angle:
+CB is the riskiest first-round position.
 
 **Rationale for groupings over fully separate models:** Data sparsity. Positions
-like S (~180 total) and TE (~150) don't have enough observations for standalone
-models with 15+ features. Groupings keep each sub-model at 300–600+ observations
-while respecting fundamentally different evaluation criteria. Do NOT merge groups
+like TE (~150 total) don't have enough observations for standalone models with
+15+ features. Groupings keep each sub-model at 300–600+ observations while
+respecting fundamentally different evaluation criteria. Do NOT merge groups
 that have different feature spaces, and do NOT split groups further without
 discussing the sample size implications.
 

@@ -21,7 +21,11 @@ SEED               <- 2026
 set.seed(SEED)
 
 # -- Position Group Mapping ---------------------------------------------------
-# Tiered sub-models: 7 model groups from 11 positions
+# Tiered sub-models: 8 model groups
+# CB and S split intentionally — meaningfully different outcome profiles:
+#   CB: ~4% boom rate, ~14% bust rate (high risk, hard to evaluate)
+#   S:  ~12% boom rate, ~8% bust rate (safer, athleticism-driven)
+# Sample sizes support the split: S=545, CB=162 in training data.
 position_model_map <- tribble(
   ~position,  ~model_group, ~model_group_label,
   "QB",       "qb",         "Quarterbacks",
@@ -37,11 +41,11 @@ position_model_map <- tribble(
   "G",        "ol",         "Offensive Line",
   "C",        "ol",         "Offensive Line",
   "OL",       "ol",         "Offensive Line",
-  "CB",       "db",         "Defensive Backs",
-  "S",        "db",         "Defensive Backs",
-  "DB",       "db",         "Defensive Backs",
-  "FS",       "db",         "Defensive Backs",
-  "SS",       "db",         "Defensive Backs",
+  "CB",       "cb",         "Cornerbacks",
+  "S",        "s",          "Safeties",
+  "FS",       "s",          "Safeties",
+  "SS",       "s",          "Safeties",
+  "DB",       "s",          "Safeties",     # generic DB → Safety (conservative default)
   "LB",       "lb",         "Linebackers",
   "ILB",      "lb",         "Linebackers",
   "OLB",      "lb",         "Linebackers",

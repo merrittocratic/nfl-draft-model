@@ -26,7 +26,8 @@ group_labels <- c(
   "wr_te" = "WR/TE",
   "dl"    = "DL",
   "ol"    = "OL",
-  "db"    = "DB",
+  "cb"    = "CB",
+  "s"     = "S",
   "lb"    = "LB",
   "rb"    = "RB"
 )
@@ -93,10 +94,15 @@ article_table <- pos_table |>
     palette = c("#1a9850", "#fee08b", "#d73027"),
     domain  = c(0, 0.5)
   ) |>
-  # Bold the DB row — Caleb Downs' position group
+  # Bold the S row — Caleb Downs' position group
   tab_style(
     style     = cell_text(weight = "bold"),
-    locations = cells_body(rows = pos_group == "DB")
+    locations = cells_body(rows = pos_group == "S")
+  ) |>
+  # Subtle highlight on CB — the risk/reward counterpoint
+  tab_style(
+    style     = cell_fill(color = "#fff3f3"),
+    locations = cells_body(rows = pos_group == "CB")
   ) |>
   # Subtle highlight on RB — the cautionary counterpoint
   tab_style(
@@ -108,7 +114,7 @@ article_table <- pos_table |>
       paste0(
         "Source: Pro Football Reference. Boom = std. residual > 1. ",
         "Bust = std. residual < \u20131. AV adjusted for draft position.<br>",
-        "DB combines safeties and cornerbacks. DL combines EDGE and IDL."
+        "CB and S modeled separately. DL combines EDGE and IDL."
       )
     )
   ) |>
