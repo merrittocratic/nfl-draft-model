@@ -138,8 +138,8 @@ cli::cli_alert_success(
 cli::cli_alert_info("model_group counts (cb/s split check):")
 draft_combined |>
   filter(model_group %in% c("cb", "s"), season %in% DRAFT_YEARS_TRAIN) |>
-  count(model_group, round_num) |>
-  filter(round_num == 1) |>
+  count(model_group, round) |>
+  filter(round == 1) |>
   print()
 
 # ============================================================================
