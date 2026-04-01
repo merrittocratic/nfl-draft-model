@@ -9,7 +9,8 @@ decision should be made with that trajectory in mind.
 ## Background
 - Director-level data scientist with deep R expertise (tidymodels, Shiny, dplyr)
 - Strong NFL domain knowledge, follows the draft closely
-- Primary AI tools: Claude Code, OpenClaw (hosted on Mac Mini M4)
+- Primary AI tool: Claude Code (this machine is the modeling machine)
+- Future: OpenClaw on Mac Mini M4 — post-draft, separate project
 - LLM APIs available: Claude, ChatGPT, Gemini (language-agnostic by design)
 - Day job: Florida Blue (health insurance) — keep completely separate from this project
 
@@ -42,8 +43,8 @@ methodology available for those who want to dig in.
 ## Tech Stack
 - **Modeling:** R + tidymodels + nflreadr + XGBoost + TabPFN + TabNet
 - **Visualization:** Observable / D3.js for interactive content embeds
-- **Automation:** Python + OpenClaw on Mac Mini M4 (separate from modeling machine)
 - **Content platforms:** X (short takes, data viz, threads) + Substack (deep dives, methodology, mock drafts)
+- **Automation (future/separate):** OpenClaw on Mac Mini M4 — not part of the 2026 draft project
 - **Code hosting:** Public GitHub repo for credibility with analytics community
 - **Style:** Written > video for now. Revisit YouTube after audience is established.
 
@@ -118,7 +119,7 @@ player. The comparison itself is high-quality content for both audience segments
 ### R Over Python for Modeling
 `nflreadr` and the nflverse ecosystem are R-first, significantly more mature than
 any Python NFL data library. `tidymodels` provides clean workflow architecture
-for the sub-model design. Python is reserved for automation/OpenClaw integration.
+for the sub-model design. Python has no role in the 2026 draft model.
 
 ### Public GitHub — Transparency Is the Brand
 Model code, outputs, and methodology are public. Accept that outputs are visible
@@ -160,32 +161,18 @@ boom probability" — not "he has a 45% boom probability."
 
 ---
 
-## Automation Architecture (In Progress — Open Decisions)
+## Automation Architecture (Future Project — Not 2026 Draft)
 
-### Current Status
-OpenClaw is not yet set up. Architecture is an open design decision.
+Mac Mini M4 is on order. OpenClaw will not be running before the 2026 draft.
+Do not design or build toward this architecture in the current project.
 
-### Infrastructure
-- OpenClaw runs on Mac Mini M4
-- R model runs on a separate machine
-- LLM APIs: Claude, ChatGPT, Gemini (language-agnostic)
+Planned for future content series (post-draft):
+1. RSS feed monitoring → LLM summarization → draft insight summaries
+2. X list monitoring → flag breaking news → model-informed reaction drafts
+3. Scheduled data refresh → push updated outputs
 
-### Planned Capabilities (Phased)
-1. RSS feed monitoring (ESPN, The Athletic, PFF) → LLM summarization → draft
-   insight summaries and social post drafts
-2. X list monitoring → flag breaking draft news → auto-generate reaction drafts
-3. Scheduled data refresh (nflreadr pull + model rescore) → push updated outputs
-
-### Output Flow (OPEN — Do Not Lock In Without Discussion)
-Options under consideration:
-- GitHub commits as both versioning and automation trigger
-- GitHub for versioning/credibility, direct push (rsync/scp) for automation
-- GitHub for versioning, shared cloud storage (S3/GCS) for automation trigger
-
-Key constraints:
-- Model outputs are public
-- Draft night latency target: 5–10 minutes from model run to content draft
-- Pre-draft automation has looser latency requirements
+Output flow and trigger patterns are open design decisions — revisit when the
+Mac Mini arrives and OpenClaw is set up.
 
 ---
 
@@ -193,13 +180,12 @@ Key constraints:
 
 ### Preferences
 - Concise, direct responses — no fluff
-- R over Python for modeling (Python fine for automation/OpenClaw)
+- R over Python for modeling — Python has no role in the 2026 draft project
 - Claude Code handles boilerplate; Merrittocracy handles domain judgment
 - Public GitHub repo to build credibility with analytics community
 
 ### Ask vs. Assume
-- **Architecture decisions** (new features, model changes, pipeline design,
-  automation patterns): Ask first, pause for input
+- **Architecture decisions** (new features, model changes, pipeline design): Ask first, pause for input
 - **Implementation details** (column name fixes, package versions, code style,
   bug fixes): Make reasonable assumptions, note them, keep moving
 
@@ -213,7 +199,7 @@ If you believe a locked-in decision should be revisited:
 - Domain judgment (which narratives to challenge, which players to feature)
 - Content voice and final editing
 - Strategic decisions about brand direction
-- OpenClaw architecture decisions
+- OpenClaw/Mac Mini architecture (future project — keep completely separate)
 
 ### What Claude Handles
 - Code implementation and debugging
@@ -224,9 +210,9 @@ If you believe a locked-in decision should be revisited:
 
 ### Do NOT
 - Suggest switching to Python for the modeling pipeline
-- Over-engineer the automation layer (open decisions remain open)
+- Build any automation infrastructure for the 2026 draft project
+- Over-engineer toward future OpenClaw/Mac Mini architecture — post-draft, separate project
 - Add features without discussing data sparsity implications
 - Merge position groups that have fundamentally different evaluation criteria
 - Split position groups further without sample size analysis
-- Lock in OpenClaw architecture decisions without explicit approval
 - Silently change a locked-in decision — flag and pause instead

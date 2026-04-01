@@ -24,11 +24,12 @@ healthcare analytics — this project is fully separate. Preferences:
 ## Tech Stack
 - **Modeling:** R + tidymodels + nflreadr + XGBoost + TabPFN + TabNet
 - **Visualization:** Observable / D3.js for interactive content embeds
-- **Automation:** Python + OpenClaw on Mac Mini M4 (separate from modeling machine)
 - **Content:** X threads, Substack posts, data viz
 - **LLM APIs available:** Claude, ChatGPT, Gemini (language-agnostic by design)
 - **R over Python for modeling** — nflreadr/nflverse ecosystem is R-first and
-  significantly more mature. Python is fine for automation/OpenClaw integration.
+  significantly more mature. Python is not part of the current project scope.
+- **Automation (future/separate):** OpenClaw on Mac Mini M4 is planned for a
+  future content automation project. It is not part of the 2026 draft model.
 
 ---
 
@@ -143,35 +144,25 @@ R/05_predict_2026.R        # Score 2026 draft class, generate player cards
 
 ---
 
-## OpenClaw Automation Architecture (In Progress)
+## OpenClaw Automation Architecture (Future Project — Not 2026 Draft)
 
-**Status:** Not yet set up. Architecture is an open design decision.
+**Status:** Mac Mini M4 is on order. OpenClaw will not be running before the
+2026 draft. Do not build toward this architecture in the current project.
 
-**Planned capabilities (phased):**
-1. RSS feed monitoring (ESPN, The Athletic, PFF) → LLM summarization → draft
-   insight summaries and social post drafts
-2. X list monitoring → flag breaking draft news → auto-generate model-informed
-   reaction drafts
-3. Scheduled data refresh (nflreadr pull + model rescore) → push updated outputs
+This is a planned capability for **future content series** (post-draft). When
+the time comes, the design decisions below will need to be revisited:
 
-**Infrastructure:**
-- OpenClaw runs on Mac Mini M4
-- R model runs on a separate machine
-- LLM APIs: Claude, ChatGPT, Gemini (project is language-agnostic for LLM calls)
+**Planned capabilities (future):**
+1. RSS feed monitoring → LLM summarization → draft insight summaries
+2. X list monitoring → flag breaking news → model-informed reaction drafts
+3. Scheduled data refresh → push updated outputs
 
-**Output flow (OPEN DESIGN DECISION — do not lock in without discussion):**
-Options under consideration:
+**Output flow (OPEN — do not lock in without explicit discussion):**
 - GitHub commits as both versioning and automation trigger
-- GitHub for versioning/credibility, direct push (rsync/scp) for automation
+- GitHub for versioning, direct push (rsync/scp) for automation
 - GitHub for versioning, shared cloud storage (S3/GCS) for automation trigger
 
-Key constraints:
-- Model outputs are **public** (transparency is the brand)
-- Draft night latency target: **5–10 minutes** from model run to content draft
-- Pre-draft automation (weeks 1–4) has looser latency requirements
-
-**Do NOT build automation infrastructure without discussing the trigger/flow
-pattern first.**
+**Do NOT build any automation infrastructure for the 2026 draft project.**
 
 ---
 
@@ -188,9 +179,33 @@ baguette, probably, glue, scales, cli, rvest, polite, fuzzyjoin, torch
 
 ## Do NOT
 - Suggest switching to Python for the modeling pipeline
-- Over-engineer the automation layer (that's a separate effort with open decisions)
+- Build any automation infrastructure for the 2026 draft project
+- Over-engineer toward future OpenClaw/Mac Mini architecture — that's a post-draft project
 - Add features without discussing data sparsity implications
 - Merge position groups that have fundamentally different evaluation criteria
 - Split position groups further without sample size analysis
-- Lock in OpenClaw architecture decisions without explicit approval
 - Silently change a locked-in decision — flag and pause instead
+
+---
+
+## Building in Public Log
+
+Whenever we agree on something new or innovative during model development —
+a novel feature approach, an interesting architecture decision, an unexpected
+finding, a useful workflow trick — prompt the user:
+
+> "Want to log this in the building in public log?"
+
+The log lives at `/Users/stephenmerritt/content/draft/building_in_public_log.md`.
+Add a dated entry in this format:
+
+```
+## YYYY-MM-DD | Short title
+- What we did/decided
+- Why it's interesting to an audience
+- Any context needed to write about it later
+```
+
+Good candidates: anything that would make a non-obvious Substack section or
+tweet — not routine implementation, but decisions, tradeoffs, or surprises worth
+showing readers.

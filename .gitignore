@@ -1,6 +1,7 @@
-# Data (regenerated from scripts)
+# Data (regenerated from scripts or sourced externally)
 data/*.rds
 data/*.csv
+data/**/*.csv
 
 # R artifacts
 .Rhistory

@@ -86,12 +86,12 @@ pfr_season <- pfr_clean |>
     games         = sum(games, na.rm = TRUE),
     .groups       = "drop"
   ) |>
-  # Only seasons within the 4-year window (years 1–4 post-draft)
+  # Only seasons within the 4-year window (years 1–4, rookie year = year 1)
   filter(
-    season > draft_year,
-    season <= draft_year + AV_WINDOW_YEARS
+    season >= draft_year,
+    season <= draft_year + AV_WINDOW_YEARS - 1
   ) |>
-  mutate(draft_yr_offset = season - draft_year)   # 1, 2, 3, 4
+  mutate(draft_yr_offset = season - draft_year + 1)   # 1, 2, 3, 4
 
 # Pivot to wide: one row per player, av_yr1 through av_yr4
 pfr_wide <- pfr_season |>
