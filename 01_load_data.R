@@ -8,13 +8,19 @@
 # Output: data/01_draft_combined.rds
 #   One row per drafted player (2006–2026 classes)
 #   Outcome variable: av_4yr (4-year windowed AV from PFR, via 01b)
+#
+# NOTE on DB position resolution:
+#   nflreadr labels many CBs and Safeties as generic "DB" in older draft
+#   classes. We resolve these AFTER the combine join using the combine's
+#   `pos` column, which has correct CB/S labels for ~75% of DB players.
+#   Unresolvable DBs (no combine match) are excluded from modeling.
 # ============================================================================
 source("00_config.R")
 library(fuzzyjoin)
 library(stringr)
 
 # ============================================================================
-# A) DRAFT PICKS
+# A) DRAFT PICKS — initial standardization (leave DB unresolved for now)
 # ============================================================================
 cli::cli_h1("Loading draft picks")
 
@@ -28,15 +34,14 @@ draft_raw <- load_draft_picks(seasons = min(DRAFT_YEARS_TRAIN):max(DRAFT_YEARS_S
       position %in% c("DT", "NT", "IDL")               ~ "IDL",
       position %in% c("T", "OT")                        ~ "OT",
       position %in% c("G", "C", "OL", "IOL")            ~ "IOL",
-      position %in% c("FS", "SS", "DB", "S")            ~ "S",
+      position %in% c("FS", "SS", "S")                  ~ "S",
       position == "CB"                                   ~ "CB",
+      position == "DB"                                   ~ "DB",   # resolved after combine join
       position %in% c("ILB", "LB", "MLB")               ~ "LB",
       position == "FB"                                   ~ "RB",
       TRUE ~ position
     )
-  ) |>
-  left_join(position_model_map |> distinct(position, model_group), by = "position") |>
-  filter(!is.na(model_group))  # drop punters, kickers, long snappers
+  )
 
 cli::cli_alert_success("Loaded {nrow(draft_raw)} draft picks")
 
@@ -85,9 +90,9 @@ draft_combined <- stringdist_left_join(
 
 combine_match_rate <- draft_combined |>
   summarise(
-    total      = n(),
+    total       = n(),
     has_combine = sum(!is.na(forty) | !is.na(bench)),
-    pct        = has_combine / total
+    pct         = has_combine / total
   )
 
 cli::cli_alert_info(
@@ -96,14 +101,54 @@ cli::cli_alert_info(
 )
 
 # ============================================================================
-# D) JOIN 4-YEAR WINDOWED AV FROM 01b
+# D) RESOLVE GENERIC "DB" LABELS USING COMBINE pos
+# ============================================================================
+cli::cli_h1("Resolving generic DB position labels")
+
+draft_combined <- draft_combined |>
+  mutate(
+    position = case_when(
+      position == "DB" & pos == "CB"              ~ "CB",
+      position == "DB" & pos %in% c("S","FS","SS") ~ "S",
+      TRUE ~ position   # all non-DB positions unchanged
+    )
+  )
+
+db_resolved <- draft_combined |>
+  filter(position_raw == "DB") |>
+  count(position) |>
+  mutate(position = if_else(position == "DB", "unresolved (excluded)", position))
+
+cli::cli_alert_info("DB label resolution:")
+print(db_resolved)
+
+# ============================================================================
+# E) ASSIGN MODEL GROUP (after DB resolution)
+# ============================================================================
+
+draft_combined <- draft_combined |>
+  left_join(position_model_map |> distinct(position, model_group), by = "position") |>
+  filter(!is.na(model_group))  # drops punters, kickers, unresolved DBs
+
+cli::cli_alert_success(
+  "{nrow(draft_combined)} players after model group assignment"
+)
+
+# Spot check: DB position group counts (should now be realistic)
+cli::cli_alert_info("model_group counts (cb/s split check):")
+draft_combined |>
+  filter(model_group %in% c("cb", "s"), season %in% DRAFT_YEARS_TRAIN) |>
+  count(model_group, round_num) |>
+  filter(round_num == 1) |>
+  print()
+
+# ============================================================================
+# F) JOIN 4-YEAR WINDOWED AV FROM 01b
 # ============================================================================
 cli::cli_h1("Joining 4-year windowed AV (from 01b_scrape_av.R)")
 
 if (!file.exists("data/01b_av_4yr.rds")) {
-  cli::cli_abort(
-    "data/01b_av_4yr.rds not found. Run 01b_scrape_av.R first."
-  )
+  cli::cli_abort("data/01b_av_4yr.rds not found. Run 01b_scrape_av.R first.")
 }
 
 av_4yr_data <- read_rds("data/01b_av_4yr.rds") |>
@@ -112,19 +157,15 @@ av_4yr_data <- read_rds("data/01b_av_4yr.rds") |>
 
 draft_combined <- draft_combined |>
   left_join(av_4yr_data, by = c("pfr_player_id" = "pfr_id")) |>
-  mutate(
-    # Canonical outcome variable: 4-year windowed AV from PFR season logs
-    av_4yr = av_4yr_total
-  ) |>
+  mutate(av_4yr = av_4yr_total) |>
   select(-av_4yr_total)
 
-# Coverage report
 av_coverage <- draft_combined |>
   filter(season %in% DRAFT_YEARS_TRAIN) |>
   summarise(
-    total   = n(),
-    has_av  = sum(!is.na(av_4yr)),
-    pct     = has_av / total
+    total  = n(),
+    has_av = sum(!is.na(av_4yr)),
+    pct    = has_av / total
   )
 
 cli::cli_alert_success(
@@ -132,7 +173,6 @@ cli::cli_alert_success(
   "({av_coverage$has_av}/{av_coverage$total})"
 )
 
-# Sanity check: distribution of 4-year AV in training window
 cli::cli_alert_info("av_4yr distribution (training classes):")
 draft_combined |>
   filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_4yr)) |>
@@ -140,27 +180,10 @@ draft_combined |>
   summary() |>
   print()
 
-# Validation: compare to w_av coverage (expect similar coverage ~91%)
-if ("w_av" %in% names(draft_combined)) {
-  wav_coverage <- draft_combined |>
-    filter(season %in% DRAFT_YEARS_TRAIN) |>
-    summarise(has = sum(!is.na(w_av)), total = n()) |>
-    mutate(pct = has / total)
-  cli::cli_alert_info(
-    "w_av coverage for comparison: {scales::percent(wav_coverage$pct, 0.1)} ",
-    "({wav_coverage$has}/{wav_coverage$total})"
-  )
-}
-
 # ============================================================================
-# E) SAVE
+# G) SAVE
 # ============================================================================
 write_rds(draft_combined, "data/01_draft_combined.rds")
 cli::cli_alert_success(
   "Saved data/01_draft_combined.rds ({nrow(draft_combined)} rows)"
-)
-
-cli::cli_alert_info(
-  "Key columns: pfr_player_id, season, pick, model_group, av_4yr, ",
-  "av_yr1-av_yr4, seasons_active_4yr, n_teams_4yr, combine measurables"
 )
