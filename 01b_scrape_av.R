@@ -28,15 +28,33 @@ if (length(csv_files) == 0) {
 
 cli::cli_alert_info("Found {length(csv_files)} file(s)")
 
-# PFR exports two columns both named "AV": career AV (col 3) and season AV (col 14).
-# read_csv auto-disambiguates to AV...3 / AV...14 — we keep season AV only.
-pfr_raw <- map(csv_files, \(f) {
-  read_csv(f, show_col_types = FALSE, name_repair = "unique") |>
-    # Drop career AV (col 3), keep season AV (col 14 → AV...14 or similar)
-    rename_with(~ "av_season", matches("^AV\\.\\.\\.(13|14)$")) |>
-    select(-matches("^AV\\.\\.\\.[0-9]+$"))   # drop any remaining duplicate AV
-}) |>
-  list_rbind()
+# PFR CSVs have 16 columns: Rk, Player, AV(career), Draft Team, Round, Pick,
+# Draft Year, College, Season, Age, Team, G, GS, AV(season), Pos, Player-additional
+# Some files (later seasons of 2020-2021 classes) are missing the header row.
+# Fix: detect per-file and assign explicit column names for both cases.
+# This avoids the rename_with() AV disambiguation entirely.
+
+pfr_col_names <- c(
+  "Rk", "Player", "av_career", "Draft Team", "Round", "Pick",
+  "Draft Year", "College", "Season", "Age", "Team", "G", "GS",
+  "av_season", "Pos", "Player-additional"
+)
+
+read_pfr_file <- function(f) {
+  first_line <- readLines(f, n = 1, warn = FALSE)
+  has_header <- grepl("Rk", first_line, fixed = TRUE)
+  read_csv(
+    f,
+    col_names = pfr_col_names,
+    skip      = if (has_header) 1L else 0L,
+    col_types = cols(.default = col_character()),
+    show_col_types = FALSE
+  )
+}
+
+pfr_raw <- map(csv_files, read_pfr_file) |>
+  list_rbind() |>
+  select(-Rk, -av_career)
 
 cli::cli_alert_success("Bound {nrow(pfr_raw)} raw rows")
 
