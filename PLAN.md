@@ -54,14 +54,38 @@
   - 224 unique players (vs ~255 picks — delta is kickers/punters/LSs, expected)
   - Row counts decline across seasons (194→192→169→166) — realistic attrition
 
+---
+
+### Session 4 — 2026-04-01
+**Completed:**
+- [x] All 60 PFR CSVs collected and dropped in `data/pfr_av_raw/`
+- [x] Fixed rookie-year bug in `01b_scrape_av.R` (`season > draft_year` → `season >= draft_year`)
+- [x] Fixed headerless CSV bug in `01b_scrape_av.R` — 4 files (d2020_s2022, d2020_s2023, d2021_s2023, d2021_s2024) had no header row; switched to per-file header detection with explicit column names
+- [x] `01b_scrape_av.R` run successfully → `data/01b_av_4yr.rds` (3,432 players)
+- [x] Rewired `01_load_data.R` to join real 4yr AV from `01b_av_4yr.rds` on `pfr_player_id`; ~91% coverage vs training classes
+- [x] Fixed critical DB position mislabeling: nflreadr labels most pre-2015 CBs as generic "DB"; routing all DB → S inflated round-1 S count to 64 (should be ~25) and deflated CB to 24 (should be ~55). Fix: resolve DB using combine `pos` column after fuzzy join, exclude unresolvable DBs
+- [x] **Architecture change: split CB and S into separate sub-models (7 → 8 groups)**
+  - CB: ~4% boom, ~14% bust — high risk, scheme-dependent, hardest position to evaluate
+  - S: ~12% boom, ~8% bust — safer, athleticism-driven
+  - Sample sizes support split: S=545, CB=162 in training data
+  - `00_config.R` `position_model_map` updated; re-ran 01 → 02
+- [x] `01_load_data.R` and `02_feature_engineering.R` re-run with correct positions and real AV
+- [x] Created `content_downs_positional_value.R` — standalone article table script reading from `02_draft_features.rds`; retired `01b_compute_4yr_av.R`
+- [x] Created `install_check.R` — post-R-upgrade package verification script
+- [x] Scoped OpenClaw/Mac Mini as future post-draft project in CLAUDE.md and INSTRUCTIONS.md
+- [x] EDGE/IDL split evaluated and rejected — outcome profiles similar enough, sample sizes fine combined
+- [x] Data quality findings documented:
+  - QB boom rate elevated by cross-position pick bin baseline + historically strong 2017–2020 class; keep as-is, contextualize in content
+  - RB boom rates high due to AV rewarding volume not value; zero bust rates in rounds 5-7 are a mechanical floor artifact; keep as-is with content caveat
+  - S numbers now realistic after DB fix (~25 round-1 Ss, ~55 round-1 CBs over 15 years)
+
 **Next session starts here:**
-1. Finish collecting remaining 56 PFR CSVs (2007–2020 draft classes, 4 seasons each)
-2. Run `source("01b_scrape_av.R")` — verify `av_4yr_total` distribution looks reasonable
-3. Update `01_load_data.R` to join `data/01b_av_4yr.rds` on `pfr_id`, replace `av_4yr = w_av` with `av_4yr = av_4yr_total`
-   - Verify join key: confirm `pfr_player_id` in nflreadr matches `Player-additional` slug from PFR
-4. Re-run `02_feature_engineering.R` with true 4-year AV
-5. Check outcome distribution (expect ~15–20% boom/bust)
-6. Proceed to `03_model_spec.R` → `04_train_evaluate.R`
+1. Fix `03_model_spec.R` — update "7 model groups" message to 8 (trivial)
+2. Verify TabPFN R package API — `library(tabpfn)` and `tab_pfn()` are speculative; confirm installed and API matches. From Session 1: TabPFN 7.0.0 is in `nfl-tabpfn` Python virtualenv via reticulate — need to confirm R-side API in `04_train_evaluate.R` matches actual package interface
+3. Run `source("03_model_spec.R")` — verify recipes compile against 8 groups
+4. Run `source("04_train_evaluate.R")` — long step (hours); XGBoost racing + TabNet 30-pt grid × 10-fold CV × 8 groups
+5. Source 2026 mock draft picks → `data/2026_mock_picks.csv`
+6. Run `source("05_predict_2026.R")`
 
 ---
 
@@ -225,28 +249,31 @@ From CLAUDE.md TODO #8:
 |----------|------|--------|----------|
 | 1 | Phase 1: Environment setup | ✅ Done | — |
 | 2 | Phase 2a–2b: Data load + fuzzy join | ✅ Done | — |
-| 3 | Phase 2c: 01b PFR CSV ingestion | 🔄 In progress — collecting 60 CSVs | Yes for accurate labels |
-| 4 | Update 01_load_data.R to join 01b output | ⏳ Waiting on CSVs | Yes |
-| 5 | Phase 3: Feature engineering validation | 🔄 Partial — ran once with w_av, re-run needed after 01b | Yes |
-| 6 | Phase 4: Model training | ⏳ Not started | Yes |
-| 7 | Phase 5: 2026 scoring | ⏳ Not started | Needs mock picks |
-| 8 | Phase 6: Pro day integration | ⏳ Not started | No — enhancement |
-| 9 | Phase 7: Diagnostics + viz | ⏳ Not started | No — but high value |
+| 3 | Phase 2c: 01b PFR CSV ingestion | ✅ Done — 60 CSVs, `01b_av_4yr.rds` generated | — |
+| 4 | Update 01_load_data.R to join 01b output | ✅ Done — real 4yr AV wired, DB fix applied | — |
+| 5 | Phase 3: Feature engineering validation | ✅ Done — re-run with real AV + 8 groups | — |
+| 6 | Fix 03_model_spec.R (7→8 group message) | ⏳ Next — trivial | No |
+| 7 | Verify TabPFN R API in 04_train_evaluate.R | ⏳ Next — potential blocker | Yes for TabPFN |
+| 8 | Phase 4: Model training (03 → 04) | ⏳ Not started | No (XGB/TabNet can run without TabPFN) |
+| 9 | Source 2026 mock draft picks | ⏳ Not started | Yes for scoring |
+| 10 | Phase 5: 2026 scoring (05) | ⏳ Not started | Needs mock picks + trained models |
+| 11 | Phase 6: Pro day integration | ⏳ Not started | No — enhancement |
+| 12 | Phase 7: Diagnostics + viz | ⏳ Not started | No — but high value |
 
 ---
 
 ## Critical Files
-- `00_config.R` — ready to run
-- `01_load_data.R` — needs column name validation + fuzzy join fix
-- `01b_scrape_av.R` — needs full implementation
-- `02_feature_engineering.R` — ready, needs conference table
-- `03_model_spec.R` — ready to run
-- `04_train_evaluate.R` — depends on package installs
-- `05_predict_2026.R` — needs mock picks input
+- `00_config.R` — ✅ clean, 8 model groups defined (cb/s split)
+- `01_load_data.R` — ✅ real 4yr AV joined, DB resolution via combine pos
+- `01b_scrape_av.R` — ✅ run, output exists (`data/01b_av_4yr.rds`)
+- `02_feature_engineering.R` — ✅ re-run with real AV and 8 groups; conference table still a placeholder
+- `03_model_spec.R` — ⚠️ minor: says "7 model groups" in final message; will auto-handle 8 groups from data
+- `04_train_evaluate.R` — ⚠️ TabPFN API unverified; XGBoost + TabNet sections look correct
+- `05_predict_2026.R` — ⚠️ DB routing for 2026 prospects uses combine pos directly (less of an issue); needs mock picks
 
 ---
 
 ## Open Questions
-1. **Mock picks source:** Build manually from consensus mocks (Jeremiah, Kiper, McShay + 2), or build a pick projection layer?
-2. **Conference mapping:** Hand-build lookup from cfbfastR, or use a static CSV? Needs realignment handling (Texas → SEC 2024, etc.)
-3. **01_load_data.R join key:** nflreadr draft picks have `pfr_player_id` — confirm this matches `Player-additional` slug from PFR exports before running 01b join.
+1. **Mock picks source:** Build manually from consensus mocks (Jeremiah, Kiper, McShay + 2), or build a pick projection layer? (From memory: consensus from 5 analysts)
+2. **Conference mapping:** Hand-build lookup from cfbfastR, or use a static CSV? Needs realignment handling (Texas → SEC 2024, etc.). Currently a placeholder in 02.
+3. **TabPFN R API:** Session 1 confirmed TabPFN 7.0.0 installed in `nfl-tabpfn` Python virtualenv. Need to verify `tab_pfn()` function name and predict API in `04_train_evaluate.R` matches actual reticulate-backed interface.
