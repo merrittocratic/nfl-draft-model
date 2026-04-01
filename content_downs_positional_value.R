@@ -105,9 +105,11 @@ article_table <- pos_table |>
   ) |>
   tab_source_note(
     source_note = md(
-      "Source: Pro Football Reference. Boom = std. residual > 1. ",
-      "Bust = std. residual < \u20131. AV adjusted for draft position.<br>",
-      "DB combines safeties and cornerbacks. DL combines EDGE and IDL."
+      paste0(
+        "Source: Pro Football Reference. Boom = std. residual > 1. ",
+        "Bust = std. residual < \u20131. AV adjusted for draft position.<br>",
+        "DB combines safeties and cornerbacks. DL combines EDGE and IDL."
+      )
     )
   ) |>
   tab_footnote(
