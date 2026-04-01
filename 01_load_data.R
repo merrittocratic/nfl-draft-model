@@ -1,16 +1,25 @@
 # ============================================================================
 # 01 — Load Raw Data from nflreadr + Pro Football Reference
+#
+# Pipeline order:
+#   Run 01b_scrape_av.R FIRST to generate data/01b_av_4yr.rds
+#   Then run this script.
+#
+# Output: data/01_draft_combined.rds
+#   One row per drafted player (2006–2026 classes)
+#   Outcome variable: av_4yr (4-year windowed AV from PFR, via 01b)
 # ============================================================================
 source("00_config.R")
 library(fuzzyjoin)
 library(stringr)
 
-# -- Draft Picks --------------------------------------------------------------
+# ============================================================================
+# A) DRAFT PICKS
+# ============================================================================
 cli::cli_h1("Loading draft picks")
 
 draft_raw <- load_draft_picks(seasons = min(DRAFT_YEARS_TRAIN):max(DRAFT_YEARS_SCORE)) |>
   filter(!is.na(pfr_player_name)) |>
-  # Standardize position labels to our mapping
   mutate(
     position_raw = position,
     position = case_when(
@@ -31,7 +40,9 @@ draft_raw <- load_draft_picks(seasons = min(DRAFT_YEARS_TRAIN):max(DRAFT_YEARS_S
 
 cli::cli_alert_success("Loaded {nrow(draft_raw)} draft picks")
 
-# -- Combine Data -------------------------------------------------------------
+# ============================================================================
+# B) COMBINE DATA
+# ============================================================================
 cli::cli_h1("Loading combine data")
 
 combine_raw <- load_combine(seasons = min(DRAFT_YEARS_TRAIN):max(DRAFT_YEARS_SCORE)) |>
@@ -43,10 +54,11 @@ combine_raw <- load_combine(seasons = min(DRAFT_YEARS_TRAIN):max(DRAFT_YEARS_SCO
 
 cli::cli_alert_success("Loaded {nrow(combine_raw)} combine records")
 
-# -- Join Draft + Combine -----------------------------------------------------
+# ============================================================================
+# C) JOIN DRAFT + COMBINE (fuzzy name match within season)
+# ============================================================================
 cli::cli_h1("Joining draft + combine data")
 
-# Normalize names for matching: lowercase, strip suffixes, strip punctuation
 normalize_name <- function(x) {
   x |>
     tolower() |>
@@ -55,73 +67,100 @@ normalize_name <- function(x) {
     str_squish()
 }
 
-draft_raw <- draft_raw |> mutate(name_norm = normalize_name(pfr_player_name))
+draft_raw   <- draft_raw   |> mutate(name_norm = normalize_name(pfr_player_name))
 combine_raw <- combine_raw |> mutate(name_norm = normalize_name(player_name))
 
-# Fuzzy join on normalized name within same season (max string distance = 2)
 draft_combined <- stringdist_left_join(
   draft_raw,
   combine_raw |> select(-player_name),
-  by     = c("season", "name_norm"),
-  method = "lv",
+  by       = c("season", "name_norm"),
+  method   = "lv",
   max_dist = 2
 ) |>
-  # season.x is the authoritative season from draft picks
   mutate(season = season.x) |>
   select(-season.x, -season.y, -name_norm.x, -name_norm.y) |>
-  # Deduplicate: keep closest name match per player-season
   group_by(season, pick) |>
   slice_head(n = 1) |>
   ungroup()
 
 combine_match_rate <- draft_combined |>
   summarise(
-    total = n(),
+    total      = n(),
     has_combine = sum(!is.na(forty) | !is.na(bench)),
-    pct = has_combine / total
+    pct        = has_combine / total
   )
 
 cli::cli_alert_info(
-  "Combine match rate: {scales::percent(combine_match_rate$pct, 0.1)} ({combine_match_rate$has_combine}/{combine_match_rate$total})"
+  "Combine match rate: {scales::percent(combine_match_rate$pct, 0.1)} ",
+  "({combine_match_rate$has_combine}/{combine_match_rate$total})"
 )
 
-# -- Career Approximate Value -------------------------------------------------
-cli::cli_h1("Checking AV data availability")
+# ============================================================================
+# D) JOIN 4-YEAR WINDOWED AV FROM 01b
+# ============================================================================
+cli::cli_h1("Joining 4-year windowed AV (from 01b_scrape_av.R)")
 
-if ("w_av" %in% names(draft_combined)) {
-  av_coverage <- draft_combined |>
-    filter(season %in% DRAFT_YEARS_TRAIN) |>
-    summarise(
-      total = n(),
-      has_av = sum(!is.na(w_av)),
-      pct = has_av / total
-    )
-  cli::cli_alert_info(
-    "Career AV coverage: {scales::percent(av_coverage$pct, 0.1)} ({av_coverage$has_av}/{av_coverage$total})"
-  )
-} else {
-  cli::cli_alert_warning(
-    "w_av not found in draft data — will need PFR scrape (see R/01b_scrape_av.R)"
+if (!file.exists("data/01b_av_4yr.rds")) {
+  cli::cli_abort(
+    "data/01b_av_4yr.rds not found. Run 01b_scrape_av.R first."
   )
 }
 
-# -- Outcome Variable: Weighted Approximate Value ----------------------------
-# We use w_av (PFR Weighted Career AV) as the outcome metric. This is an
-# intentional choice, not a proxy:
-#   - w_av weights peak/early-career seasons more heavily than raw career totals
-#   - This naturally de-emphasizes longevity over quality, which is what
-#     draft evaluation cares about — did this pick pan out, and how quickly?
-#   - A player who dominated for 5 years scores higher than one who accumulated
-#     AV over 15 mediocre seasons, which is exactly the signal we want
-#   - nflreadr's car_av column is entirely empty (confirmed); w_av has 91% coverage
-# Future enhancement: chromote-based PFR scraper for true 4-year window
-# (PFR is behind Cloudflare; rvest/polite cannot bypass it)
+av_4yr_data <- read_rds("data/01b_av_4yr.rds") |>
+  select(pfr_id, av_4yr_total, av_yr1, av_yr2, av_yr3, av_yr4,
+         seasons_active_4yr, n_teams_4yr)
+
 draft_combined <- draft_combined |>
+  left_join(av_4yr_data, by = c("pfr_player_id" = "pfr_id")) |>
   mutate(
-    av_4yr            = w_av,
-    years_since_draft = max(DRAFT_YEARS_TRAIN) + AV_WINDOW_YEARS - season
+    # Canonical outcome variable: 4-year windowed AV from PFR season logs
+    av_4yr = av_4yr_total
+  ) |>
+  select(-av_4yr_total)
+
+# Coverage report
+av_coverage <- draft_combined |>
+  filter(season %in% DRAFT_YEARS_TRAIN) |>
+  summarise(
+    total   = n(),
+    has_av  = sum(!is.na(av_4yr)),
+    pct     = has_av / total
   )
 
-# -- Save Intermediate --------------------------------------------------------
+cli::cli_alert_success(
+  "4yr AV coverage (training): {scales::percent(av_coverage$pct, 0.1)} ",
+  "({av_coverage$has_av}/{av_coverage$total})"
+)
+
+# Sanity check: distribution of 4-year AV in training window
+cli::cli_alert_info("av_4yr distribution (training classes):")
+draft_combined |>
+  filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_4yr)) |>
+  pull(av_4yr) |>
+  summary() |>
+  print()
+
+# Validation: compare to w_av coverage (expect similar coverage ~91%)
+if ("w_av" %in% names(draft_combined)) {
+  wav_coverage <- draft_combined |>
+    filter(season %in% DRAFT_YEARS_TRAIN) |>
+    summarise(has = sum(!is.na(w_av)), total = n()) |>
+    mutate(pct = has / total)
+  cli::cli_alert_info(
+    "w_av coverage for comparison: {scales::percent(wav_coverage$pct, 0.1)} ",
+    "({wav_coverage$has}/{wav_coverage$total})"
+  )
+}
+
+# ============================================================================
+# E) SAVE
+# ============================================================================
 write_rds(draft_combined, "data/01_draft_combined.rds")
-cli::cli_alert_success("Saved data/01_draft_combined.rds ({nrow(draft_combined)} rows)")
+cli::cli_alert_success(
+  "Saved data/01_draft_combined.rds ({nrow(draft_combined)} rows)"
+)
+
+cli::cli_alert_info(
+  "Key columns: pfr_player_id, season, pick, model_group, av_4yr, ",
+  "av_yr1-av_yr4, seasons_active_4yr, n_teams_4yr, combine measurables"
+)
