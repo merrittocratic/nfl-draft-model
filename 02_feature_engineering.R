@@ -11,59 +11,78 @@ draft_combined <- read_rds("data/01_draft_combined.rds")
 
 # ============================================================================
 # A) OUTCOME: Draft-Pick-Adjusted AV Residuals
+#
+# Approach: fit av_4yr ~ log(pick) + factor(round) separately per model group
+# on training data. Expected AV is the fitted value from that curve; the
+# residual measures how far above/below the position-specific curve a player
+# landed. Standardize residuals within group to define boom/bust thresholds.
+#
+# Why per-group curves instead of cross-position pick bins:
+#   QBs accumulate AV faster than OL; safeties drafted top-15 were being
+#   benchmarked against QBs at the same slot, inflating the "expected" bar
+#   and suppressing apparent S boom rates. Position-specific curves fix this.
+#
+# factor(round) captures the real step-function in draft structure (contract
+# slots, roster guarantees) without needing arbitrary pick bin boundaries.
 # ============================================================================
-cli::cli_h1("Computing draft-pick AV expectations")
+cli::cli_h1("Fitting position-group AV curves")
 
-# Expected AV by pick slot (historical average)
-pick_av_baseline <- draft_combined |>
-  filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_4yr)) |>
+# model_group already joined in 01_load_data.R
+draft_fe <- draft_combined |>
   mutate(
-    pick_bin = case_when(
-      pick <= 5   ~ "top5",
-      pick <= 10  ~ "top10",
-      pick <= 20  ~ "first_round_mid",
-      pick <= 32  ~ "first_round_late",
-      pick <= 50  ~ "second_early",
-      pick <= 75  ~ "second_late_third",
-      pick <= 100 ~ "third_fourth",
-      pick <= 150 ~ "mid_rounds",
-      pick <= 200 ~ "late_rounds",
-      TRUE        ~ "end_of_draft"
-    )
-  ) |>
-  group_by(pick_bin) |>
+    round_num = as.numeric(round),
+    log_pick  = log(pick)
+  )
+
+# Fit one curve per model group on training data
+training_data <- draft_fe |>
+  filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_4yr), !is.na(model_group))
+
+av_curve_models <- training_data |>
+  group_by(model_group) |>
+  group_split() |>
+  set_names(map_chr(training_data |> group_by(model_group) |> group_split(),
+                    ~ unique(.x$model_group))) |>
+  map(~ lm(av_4yr ~ log_pick + factor(round_num), data = .x))
+
+cli::cli_alert_info("AV curve model summaries:")
+walk2(av_curve_models, names(av_curve_models), function(mod, grp) {
+  cli::cli_alert_info(
+    "{grp}: R²={round(summary(mod)$r.squared, 3)}, n={nrow(mod$model)}"
+  )
+})
+
+# Generate fitted values (expected_av) for every player in the full dataset
+# Players outside training years get predictions from the training-fit curves
+draft_fe <- draft_fe |>
+  group_by(model_group) |>
+  group_modify(function(group_df, key) {
+    grp <- key$model_group
+    mod <- av_curve_models[[grp]]
+
+    if (is.null(mod)) {
+      return(group_df |> mutate(expected_av = NA_real_))
+    }
+
+    group_df |>
+      mutate(expected_av = predict(mod, newdata = group_df))
+  }) |>
+  ungroup()
+
+# Residuals and standardization within model group (training data drives the SD)
+group_resid_sds <- draft_fe |>
+  filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_4yr)) |>
+  group_by(model_group) |>
   summarise(
-    expected_av = mean(av_4yr, na.rm = TRUE),
-    expected_av_sd = sd(av_4yr, na.rm = TRUE),
-    n_players = n(),
+    resid_sd = sd(av_4yr - expected_av, na.rm = TRUE),
     .groups = "drop"
   )
 
-cli::cli_alert_info("Pick bin AV expectations:")
-print(pick_av_baseline)
-
-# Join back and compute residual
-draft_fe <- draft_combined |>
+draft_fe <- draft_fe |>
+  left_join(group_resid_sds, by = "model_group") |>
   mutate(
-    pick_bin = case_when(
-      pick <= 5   ~ "top5",
-      pick <= 10  ~ "top10",
-      pick <= 20  ~ "first_round_mid",
-      pick <= 32  ~ "first_round_late",
-      pick <= 50  ~ "second_early",
-      pick <= 75  ~ "second_late_third",
-      pick <= 100 ~ "third_fourth",
-      pick <= 150 ~ "mid_rounds",
-      pick <= 200 ~ "late_rounds",
-      TRUE        ~ "end_of_draft"
-    )
-  ) |>
-  left_join(pick_av_baseline |> select(pick_bin, expected_av, expected_av_sd),
-            by = "pick_bin") |>
-  mutate(
-    av_residual = av_4yr - expected_av,
-    av_residual_z = if_else(expected_av_sd > 0,
-                            av_residual / expected_av_sd, 0),
+    av_residual   = av_4yr - expected_av,
+    av_residual_z = if_else(resid_sd > 0, av_residual / resid_sd, 0),
     outcome_class = case_when(
       is.na(av_4yr)       ~ NA_character_,
       av_residual_z > 1   ~ "boom",
@@ -192,9 +211,8 @@ draft_fe <- draft_fe |>
   mutate(
     draft_age = age,
     college_years = pmin(pmax(round(draft_age - 18), 1), 6),
-    is_underclassman = college_years <= 3,
-    log_pick = log(pick),
-    round_num = as.numeric(round)
+    is_underclassman = college_years <= 3
+    # log_pick and round_num already computed in section A
   )
 
 # ============================================================================

@@ -1,14 +1,16 @@
 # ============================================================================
-# content_downs_positional_value.R
-# Merrittocracy — Caleb Downs / Positional Value Article Table
+# content_1b_downs_positional_value.R
+# Merrittocracy — Caleb Downs / Positional Value Article Table (Version 1)
 #
-# Produces the gt boom/bust table for the "Is Safety the Safest Pick?"
-# article about Caleb Downs and first-round DB value.
+# Produces the gt boom/bust table using the CROSS-POSITION pick bin baseline —
+# the original approach before switching to position-specific log-pick curves.
 #
-# Input:  data/02_draft_features.rds  (pipeline output — run 01 → 01b → 02 first)
-# Output: output/figures/downs_positional_value_table.png
+# Used for content comparison: shows how the baseline choice changes the story.
+# This is Table 1 (the "before"); content_downs_positional_value.R produces
+# Table 2 (the "after" with position-specific curves).
 #
-# Copy output to content/graphics/ for publication.
+# Input:  data/02b_draft_features.rds  (run 02b_feature_engineering.R first)
+# Output: output/figures/downs_positional_value_table_1.png
 # ============================================================================
 source("00_config.R")
 library(gt)
@@ -16,11 +18,10 @@ library(gt)
 # ============================================================================
 # A) LOAD & PREP
 # ============================================================================
-cli::cli_h1("Building positional value table — Downs article")
+cli::cli_h1("Building positional value table — cross-position baseline (v1)")
 
-draft_fe <- read_rds("data/02_draft_features.rds")
+draft_fe <- read_rds("data/02b_draft_features.rds")
 
-# Readable position group labels for the table
 group_labels <- c(
   "qb"    = "QB",
   "wr_te" = "WR/TE",
@@ -60,7 +61,7 @@ pos_table <- rd1 |>
   ) |>
   arrange(desc(boom_bust_diff))
 
-cli::cli_h2("Position group results (Round 1)")
+cli::cli_h2("Position group results (Round 1) — cross-position baseline")
 print(pos_table |> select(pos_group, n_drafted, boom_rate, bust_rate, boom_bust_diff))
 
 # ============================================================================
@@ -72,7 +73,7 @@ article_table <- pos_table |>
   gt() |>
   tab_header(
     title    = md("**First-Round Boom & Bust Rates by Position Group**"),
-    subtitle = md("*Draft classes 2006–2020 | 4-year Career Approximate Value*")
+    subtitle = md("*Draft classes 2006–2020 | Cross-position pick bin baseline*")
   ) |>
   cols_label(
     pos_group      = "Position",
@@ -94,17 +95,14 @@ article_table <- pos_table |>
     palette = c("#1a9850", "#fee08b", "#d73027"),
     domain  = c(0, 0.5)
   ) |>
-  # Bold the S row — Caleb Downs' position group
   tab_style(
     style     = cell_text(weight = "bold"),
     locations = cells_body(rows = pos_group == "S")
   ) |>
-  # Subtle highlight on CB — the risk/reward counterpoint
   tab_style(
     style     = cell_fill(color = "#fff3f3"),
     locations = cells_body(rows = pos_group == "CB")
   ) |>
-  # Subtle highlight on RB — the cautionary counterpoint
   tab_style(
     style     = cell_fill(color = "#fff3f3"),
     locations = cells_body(rows = pos_group == "RB")
@@ -113,7 +111,7 @@ article_table <- pos_table |>
     source_note = md(
       paste0(
         "Source: Pro Football Reference. Boom = std. residual > 1. ",
-        "Bust = std. residual < \u20131. AV adjusted for draft position.<br>",
+        "Bust = std. residual < \u20131. AV benchmark: cross-position pick bin average.<br>",
         "CB and S modeled separately. DL combines EDGE and IDL."
       )
     )
@@ -137,19 +135,7 @@ article_table <- pos_table |>
 # D) EXPORT
 # ============================================================================
 
-out_path <- "output/figures/downs_positional_value_table_2.png"
+out_path <- "output/figures/downs_positional_value_table_1.png"
 gtsave(article_table, out_path, vwidth = 700)
 cli::cli_alert_success("Table saved to {out_path}")
-cli::cli_alert_info("Copy to content/graphics/ for publication.")
-
-# ============================================================================
-# E) SPOT CHECK — first-round DBs
-# ============================================================================
-cli::cli_h2("First-round DB picks — spot check classifications")
-
-rd1 |>
-  filter(model_group == "db") |>
-  arrange(season, pick) |>
-  select(pfr_player_name, season, pick, position,
-         av_4yr, expected_av, av_residual_z, outcome_class) |>
-  print(n = 50)
+cli::cli_alert_info("Pair with downs_positional_value_table_2.png for methodology comparison content.")

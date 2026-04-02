@@ -148,6 +148,16 @@ R/05_predict_2026.R        # Score 2026 draft class, generate player cards
      combine and pro day — useful for validation but NOT used to adjust the raw
      values (the source indicator handles this instead)
    - Content angle: "Why pro day numbers lie" is a Substack post
+9. **Social media risk signal (future model feature):** Explore whether prospect
+   social media behavior is a predictive signal for bust probability — specifically
+   "peak physical condition" content (heavy lift videos, physique posts) posted
+   close to the draft. Hypothesis: conspicuous peak-condition signaling correlates
+   with injury risk in early NFL career (Barkley, Chubb as recent examples; Henry
+   as the durability outlier). Best sources are Instagram and YouTube (public,
+   accessible) rather than X (API now $100–$500/month, post-2023 pricing) or
+   Discord (no public API, server-gated). Signal extraction would require LLM-based
+   image/video classification. **Do not build before 2026 draft — this is a
+   2027-model enhancement.**
 
 ---
 

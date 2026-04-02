@@ -79,13 +79,43 @@
   - RB boom rates high due to AV rewarding volume not value; zero bust rates in rounds 5-7 are a mechanical floor artifact; keep as-is with content caveat
   - S numbers now realistic after DB fix (~25 round-1 Ss, ~55 round-1 CBs over 15 years)
 
+### Session 5 — 2026-04-02
+**Completed:**
+- [x] Identified cross-position pick bin baseline was distorting outcome variable —
+  S boom rates suppressed, RB boom rates inflated due to benchmarking against all
+  positions at a pick slot rather than position-specific history
+- [x] **Outcome variable overhaul:** replaced pick bin averages with per-group log-pick
+  curves — `lm(av_4yr ~ log_pick + factor(round_num))` fitted on training data per
+  model group. Residuals standardized within group. Boom/bust thresholds (±1 SD)
+  are now position-specific.
+- [x] `02_feature_engineering.R` updated and re-run — new outcome distribution:
+  503 booms (15%), 357 busts (11%), 2,554 expected (77%). R² by group: 0.32–0.49.
+- [x] Created `02b_feature_engineering.R` — preserves original cross-position pick
+  bin approach for comparison; outputs `data/02b_draft_features.rds`
+- [x] Created `content_1b_downs_positional_value.R` → `table_1.png` (old baseline)
+- [x] Renamed existing table to `table_2.png`; updated `content_downs_positional_value.R`
+  to match
+- [x] Sanity checked round-1 RB and S boom/bust player lists — all classifications
+  correct. Saquon Barkley as bust (#2, 29 AV vs 40.0 expected) is defensible and
+  a deliberate content callout (availability IS the outcome)
+- [x] OL/RB/S showing near-zero boom-bust delta in round 1 investigated — RB (7/7)
+  and S (5/5) are small sample coincidence; OL near-zero is a real finding
+  (teams efficiently price round-1 OL)
+- [x] Added social media risk signal as future model feature (item 9) in CLAUDE.md
+- [x] Building in public log updated: log-pick curve methodology decision +
+  availability-as-outcome angle
+
 **Next session starts here:**
 1. Fix `03_model_spec.R` — update "7 model groups" message to 8 (trivial)
-2. Verify TabPFN R package API — `library(tabpfn)` and `tab_pfn()` are speculative; confirm installed and API matches. From Session 1: TabPFN 7.0.0 is in `nfl-tabpfn` Python virtualenv via reticulate — need to confirm R-side API in `04_train_evaluate.R` matches actual package interface
+2. Verify TabPFN R package API — `library(tabpfn)` and `tab_pfn()` are speculative;
+   confirm installed and API matches. From Session 1: TabPFN 7.0.0 is in `nfl-tabpfn`
+   Python virtualenv via reticulate — need to confirm R-side API in `04_train_evaluate.R`
 3. Run `source("03_model_spec.R")` — verify recipes compile against 8 groups
-4. Run `source("04_train_evaluate.R")` — long step (hours); XGBoost racing + TabNet 30-pt grid × 10-fold CV × 8 groups
+4. Run `source("04_train_evaluate.R")` — long step (hours); XGBoost racing + TabNet
+   30-pt grid × 10-fold CV × 8 groups
 5. Source 2026 mock draft picks → `data/2026_mock_picks.csv`
 6. Run `source("05_predict_2026.R")`
+7. Update `downs_positional_value.md` article with new table_2 numbers once confirmed
 
 ---
 
@@ -251,7 +281,7 @@ From CLAUDE.md TODO #8:
 | 2 | Phase 2a–2b: Data load + fuzzy join | ✅ Done | — |
 | 3 | Phase 2c: 01b PFR CSV ingestion | ✅ Done — 60 CSVs, `01b_av_4yr.rds` generated | — |
 | 4 | Update 01_load_data.R to join 01b output | ✅ Done — real 4yr AV wired, DB fix applied | — |
-| 5 | Phase 3: Feature engineering validation | ✅ Done — re-run with real AV + 8 groups | — |
+| 5 | Phase 3: Feature engineering validation | ✅ Done — position-specific log-pick curves, re-run with real AV + 8 groups | — |
 | 6 | Fix 03_model_spec.R (7→8 group message) | ⏳ Next — trivial | No |
 | 7 | Verify TabPFN R API in 04_train_evaluate.R | ⏳ Next — potential blocker | Yes for TabPFN |
 | 8 | Phase 4: Model training (03 → 04) | ⏳ Not started | No (XGB/TabNet can run without TabPFN) |
@@ -266,7 +296,8 @@ From CLAUDE.md TODO #8:
 - `00_config.R` — ✅ clean, 8 model groups defined (cb/s split)
 - `01_load_data.R` — ✅ real 4yr AV joined, DB resolution via combine pos
 - `01b_scrape_av.R` — ✅ run, output exists (`data/01b_av_4yr.rds`)
-- `02_feature_engineering.R` — ✅ re-run with real AV and 8 groups; conference table still a placeholder
+- `02_feature_engineering.R` — ✅ position-specific log-pick curves, re-run; conference table still a placeholder
+- `02b_feature_engineering.R` — ✅ new; cross-position pick bin baseline preserved for comparison → `data/02b_draft_features.rds`
 - `03_model_spec.R` — ⚠️ minor: says "7 model groups" in final message; will auto-handle 8 groups from data
 - `04_train_evaluate.R` — ⚠️ TabPFN API unverified; XGBoost + TabNet sections look correct
 - `05_predict_2026.R` — ⚠️ DB routing for 2026 prospects uses combine pos directly (less of an issue); needs mock picks
