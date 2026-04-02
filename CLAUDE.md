@@ -118,22 +118,15 @@ R/05_predict_2026.R        # Score 2026 draft class, generate player cards
 ```
 
 ## Known Issues / TODOs (Priority Order)
-1. **4-year AV scraper (01b):** Stub only. Need to scrape season-level AV from
-   PFR using `pfr_player_id`. `career_av` from nflreadr overcounts for older
-   classes. Use `rvest` + `polite`, cache HTML, respect rate limits. ~3,750
-   players × 3s delay = ~2 hours.
-2. **Combine join fuzziness:** `01_load_data.R` uses exact name match. Will break
-   on Jr/Sr suffixes, hyphens, name formatting differences. Needs `fuzzyjoin` or
-   string normalization.
-3. **nflreadr column names:** Scripts assume column names that may not exactly match
-   current nflreadr output. Run `01_load_data.R` first and inspect actual columns.
-4. **TabPFN + TabNet integration:** Spec exists (see architecture above), needs
-   implementation in `03_model_spec.R` and `04_train_evaluate.R`.
-5. **College-to-conference mapping:** `02_feature_engineering.R` has a placeholder.
+1. **TabPFN + TabNet integration:** Spec exists (see architecture above), needs
+   verification in `03_model_spec.R` and `04_train_evaluate.R`. TabPFN 7.0.0
+   installed in `nfl-tabpfn` virtualenv — `tab_pfn()` function name unverified.
+2. **College-to-conference mapping:** `02_feature_engineering.R` has a placeholder.
    Need a lookup table handling realignment (Texas → SEC 2024, etc.). Consider
    `cfbfastR` or manual build.
-6. **2026 mock draft picks:** `05_predict_2026.R` needs projected picks. Source from consensus mocks or build pick projection layer.
-7. **College production features:** Position-specific college stats not yet
+3. **2026 mock draft picks:** `05_predict_2026.R` needs projected picks. Consensus
+   from 5 analysts (Jeremiah, Kiper, McShay + 2). Build `data/2026_mock_picks.csv`.
+4. **College production features:** Position-specific college stats not yet
    integrated. Would come from `cfbfastR` or manual sourcing.
 8. **Pro day data integration (hybrid approach):** Combine non-participants
    have real measured data from college pro days that we're currently losing to
