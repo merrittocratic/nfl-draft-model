@@ -231,11 +231,12 @@ magrittr-only patterns that **silently fail or error** with `|>`:
 
 ## Building in Public Log
 
-Whenever we agree on something new or innovative during model development —
-a novel feature approach, an interesting architecture decision, an unexpected
-finding, a useful workflow trick — prompt the user:
+**IMPORTANT: Ask at the end of EVERY session, not just when something feels notable.**
+The user has flagged this as easy to forget. Do not wait to be asked — proactively
+prompt at natural stopping points (end of session, after a major decision, after an
+unexpected finding):
 
-> "Want to log this in the building in public log?"
+> "Any candidates for the building in public log?"
 
 The log lives at `/Users/stephenmerritt/content/draft/building_in_public_log.md`.
 Add a dated entry in this format:
@@ -249,4 +250,4 @@ Add a dated entry in this format:
 
 Good candidates: anything that would make a non-obvious Substack section or
 tweet — not routine implementation, but decisions, tradeoffs, or surprises worth
-showing readers.
+showing readers. When in doubt, surface it and let the user decide.
