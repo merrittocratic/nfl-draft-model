@@ -12,6 +12,11 @@ data/**/*.csv
 # Model outputs (large binary files)
 output/models/*.rds
 
+# Generated figures (binary outputs — regenerate from scripts)
+output/figures/*.png
+output/figures/*.jpg
+output/figures/*.svg
+
 # PFR download artifacts
 sportsref_download*
 

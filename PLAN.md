@@ -105,17 +105,61 @@
 - [x] Building in public log updated: log-pick curve methodology decision +
   availability-as-outcome angle
 
+### Session 6 — 2026-04-04
+**Completed:**
+- [x] Fixed multiple `03_model_spec.R` issues:
+  - Base R `|>` pipe `.` placeholder fix (set_names)
+  - `batch_size` fixed at 128L (removed from tuning grid — dials incompatibility)
+  - `step_zv` added before `step_normalize`; recipe step order corrected (dummy before zv)
+  - `local()` closure to capture free variables (`combine_features`, `shared_features`, `SEED`)
+    so they serialize with the function into RDS and are available in parallel workers
+  - `nthread = 1` for XGBoost and ranger (over-subscription fix for parallel CV)
+  - `make_folds` wrapped in `local()` for consistency
+- [x] Fixed `04_train_evaluate.R`:
+  - `library(tabpfn)` → `library(callr)`; TabPFN runs in isolated subprocess via `callr::r()`
+    to avoid R torch / Python torch dylib symbol clash
+  - `doFuture` parallel backend added for XGBoost CV (`parallel_over = "resamples"`)
+  - `allow_par = FALSE` added to TabNet `control_grid()` — torch crashes in parallel workers
+  - MPS disabled — tabnet nn_module operations not compatible with Apple MPS backend
+  - Per-group checkpoint writes added (`data/04_checkpoint_*.rds`)
+  - `av_residual` → `av_residual_z` throughout `03`, `04`, `05` — model was predicting
+    raw AV residuals instead of z-scores; RMSE now on correct scale (~1.0 null model)
+  - TabNet `tryCatch` for graceful failure handling
+  - `comparison_winner` vs `deploy_winner` split — TabPFN comparison-only, final model
+    always XGBoost or TabNet
+- [x] EDA findings:
+  - Program pipeline features ARE working — early years (2006-2009) near-zero by design,
+    2015-2020 averaging prog_all_n=23-30, prog_pos_n=3-4. Not a bug.
+  - Individual feature correlations with av_residual_z are weak (r < 0.08 for all features)
+  - RMSE ~1.0 reflects genuine difficulty of predicting AV residuals from pre-draft features
+  - **College production features identified as highest-ROI improvement** — not yet built
+- [x] Built `01c_load_college_stats.R` — cfbfastR integration (not yet sourced)
+  - Pulls passing, rushing, receiving, defensive, interception stats 2002–2025
+  - File-cached raw data (`data/01c_college_stats_raw.rds`)
+  - Fuzzy join to draft prospects on name + college
+  - Match rate diagnostics by model group
+- [x] `PICK_LADDER` added to `00_config.R`
+  - `c(seq(1, 64, by=4), seq(64, 260, by=10))` — avoids round-number anchoring bias
+- [x] cfbfastR installed; API key in `.Renviron`; `register_cfbd()` moved to `01c` (not config)
+- [x] `04_train_evaluate.R` kicked off — CB complete (XGB 0.97, TabPFN 1.01, TabNet 0.99),
+  remaining groups likely running or checkpointed
+- [x] Downs article reviewed; "Track Record" section drafted (Berry, Smith, Hamilton, Barron);
+  Saban placeholder placed in "The Prospect" section
+
 **Next session starts here:**
-1. Fix `03_model_spec.R` — update "7 model groups" message to 8 (trivial)
-2. Verify TabPFN R package API — `library(tabpfn)` and `tab_pfn()` are speculative;
-   confirm installed and API matches. From Session 1: TabPFN 7.0.0 is in `nfl-tabpfn`
-   Python virtualenv via reticulate — need to confirm R-side API in `04_train_evaluate.R`
-3. Run `source("03_model_spec.R")` — verify recipes compile against 8 groups
-4. Run `source("04_train_evaluate.R")` — long step (hours); XGBoost racing + TabNet
-   30-pt grid × 10-fold CV × 8 groups
-5. Source 2026 mock draft picks → `data/2026_mock_picks.csv`
-6. Run `source("05_predict_2026.R")`
-7. Update `downs_positional_value.md` article with new table_2 numbers once confirmed
+1. **Source `01c_load_college_stats.R`** — verify match rates by group, fix any column name
+   mismatches in cfbfastR API response, fix college name normalization gaps
+2. **Update `02_feature_engineering.R`** — join college stats, derive position-specific
+   features (qb_cmp_pct, qb_ypa, rush_ypc, rec_ypg, def_sacks_pg, etc.)
+3. **Add college features to `00_config.R`** (`college_features` constant) and `03_model_spec.R`
+4. **Re-run `02` → `03` → `04`** — expect meaningful RMSE improvement once college
+   production features are in
+5. **Check `04` checkpoint results** — if current run completed, evaluate group-level RMSEs
+   before deciding whether to re-run or wait for college features
+6. **Finish Downs article** — add Track Record section, find Saban quote, verify Berry
+   Pro Bowl count, publish
+7. **Source 2026 mock draft picks** → `data/2026_mock_picks.csv`
+8. **Run `source("05_predict_2026.R")`**
 
 ---
 

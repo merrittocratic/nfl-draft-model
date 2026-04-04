@@ -133,7 +133,7 @@ score_prospects <- function(prospect_data, mock_picks = NULL) {
   scored |>
     group_by(model_group) |>
     mutate(
-      group_resid_sd = sd(draft_fe$av_residual[
+      group_resid_sd = sd(draft_fe$av_residual_z[
         draft_fe$model_group == unique(model_group) &
         draft_fe$season %in% DRAFT_YEARS_TRAIN
       ], na.rm = TRUE),
@@ -166,7 +166,7 @@ format_player_card <- function(scored_data) {
       position     = position,
       school       = school,
       model_group  = model_group,
-      predicted_av_residual = round(.pred, 1),
+      predicted_av_residual_z = round(.pred, 1),
       p_boom       = scales::percent(p_boom, accuracy = 0.1),
       p_bust       = scales::percent(p_bust, accuracy = 0.1),
       p_expected   = scales::percent(p_expected, accuracy = 0.1),

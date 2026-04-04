@@ -53,6 +53,13 @@ position_model_map <- tribble(
   "FB",       "rb",         "Running Backs"
 )
 
+# -- Pick Ladder for Range Scoring --------------------------------------------
+# Increments of 4 through round 2 (picks 1-64) to avoid psychological anchoring
+# on round numbers (top-5, top-10, etc.). Coarser increments of 10 in rounds 3-7
+# where pick precision matters less. Used in 05_predict_2026.R to score each
+# prospect across a range rather than pinning to a single mock projection.
+PICK_LADDER <- unique(c(seq(1, 64, by = 4), seq(64, 260, by = 10)))
+
 # -- Combine Measurables We Care About ---------------------------------------
 combine_features <- c(
   "ht", "wt", "forty", "bench", "vertical",

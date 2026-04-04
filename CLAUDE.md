@@ -118,9 +118,15 @@ R/05_predict_2026.R        # Score 2026 draft class, generate player cards
 ```
 
 ## Known Issues / TODOs (Priority Order)
-1. **TabPFN + TabNet integration:** Spec exists (see architecture above), needs
-   verification in `03_model_spec.R` and `04_train_evaluate.R`. TabPFN 7.0.0
-   installed in `nfl-tabpfn` virtualenv — `tab_pfn()` function name unverified.
+1. **TabPFN integration:** No official R package exists — interface is via
+   `reticulate` directly. `tab_pfn()` in `04_train_evaluate.R` is aspirational
+   and needs replacement. Confirmed approach: manual CV loop (`run_tabpfn_cv()`)
+   outside tidymodels, using the same folds as XGBoost/TabNet. Smoke test first:
+   `reticulate::import("tabpfn"); names(tabpfn)` — confirm `TabPFNRegressor`
+   is exported before building the wrapper.
+   **Future (post-draft):** Consider Option B — register TabPFN as a custom
+   parsnip engine for full tidymodels integration. Deferred due to April 24
+   deadline and parsnip registration complexity.
 2. **College-to-conference mapping:** `02_feature_engineering.R` has a placeholder.
    Need a lookup table handling realignment (Texas → SEC 2024, etc.). Consider
    `cfbfastR` or manual build.
@@ -176,6 +182,13 @@ the time comes, the design decisions below will need to be revisited:
 
 ---
 
+## Git Hygiene
+Binary outputs (figures, model files) are never committed — they're regenerated from scripts.
+When creating new output types, add them to `.gitignore` before committing:
+- `output/figures/` — `*.png`, `*.jpg`, `*.svg`
+- `output/models/` — `*.rds`
+- `data/` — `*.rds`, `*.csv` (raw and intermediate data)
+
 ## Code Style
 - tidyverse style: pipes, dplyr verbs, snake_case
 - `cli::` for console output (`cli_h1`, `cli_alert_success`, `cli_alert_info`)
@@ -186,6 +199,24 @@ the time comes, the design decisions below will need to be revisited:
 ## Key Packages
 tidyverse, tidymodels, nflreadr, xgboost, ranger, tabnet, tabpfn, finetune,
 baguette, probably, glue, scales, cli, rvest, polite, fuzzyjoin, torch
+
+## Debugging Approach
+When a fix fails twice in a row, stop iterating on the same approach. Step back,
+question the assumption, and consider whether the parameter/feature causing the
+error should be simplified or removed entirely rather than patched. Ask the user
+before attempting a third variation of the same fix.
+
+## Pipe Compatibility — Base R `|>` vs magrittr `%>%`
+This codebase uses base R `|>`. When writing or reviewing R code, scan for these
+magrittr-only patterns that **silently fail or error** with `|>`:
+
+- **`.` placeholder** — `|> set_names(map_chr(., ...))` → assign first, then call
+- **`%>%` with `.` in non-first argument position** — e.g., `lm(y ~ x, data = .)`
+- Any function where the pipe target needs to appear in a non-first argument
+
+**Fix pattern:** Break the chain, assign the intermediate result, then pass it explicitly.
+
+---
 
 ## Do NOT
 - Suggest switching to Python for the modeling pipeline
