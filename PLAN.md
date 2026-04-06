@@ -146,20 +146,37 @@
 - [x] Downs article reviewed; "Track Record" section drafted (Berry, Smith, Hamilton, Barron);
   Saban placeholder placed in "The Prospect" section
 
+### Session 7 — 2026-04-06
+**Completed:**
+- [x] Diagnosed three structural problems suppressing college stats signal (RMSE 0.963–0.996):
+  1. `step_impute_median` for college pctiles was creating spurious "real vs imputed 0.5" splits —
+     LB `int_int_pctile` gain=0.6578 with RMSE=0.991 is the textbook artifact signature
+  2. WR/TE rec_* percentiles computed within `(season, model_group)` mixed WR and TE scales,
+     diluting both signals and leaving `log_pick` as top WR/TE feature
+  3. RB `rec_ypr_pctile` imputed to 0.5 for 77% of observations drowned a known r=0.60 signal
+- [x] **Priority 1 (imputation fix):** Removed `step_impute_median` for college pctile features
+  from shared recipe in `03_model_spec.R`; added `make_tabnet_recipe()` (imputation only for TabNet)
+- [x] **Priority 2 (WR/TE percentile):** rec_* features for wr_te group now ranked within
+  `(season, position)` not `(season, model_group)`; added `is_te` indicator feature
+- [x] **Priority 3 (domination features):** Added team stats pull (`cfbd_stats_season_team()`)
+  to `01c`; computes `rec_yds_share`, `rush_yds_share`, `qb_yds_per_play` (share of team production)
+- [x] **Priority 4 (YOY trajectory):** Added `extract_yoy_stat()` helper to `01c`; produces
+  yr1/yr2 separate values for qb_ypa, rec_ypr, rush_ypc, def_tot; YOY pctile features in B3 section of `02`
+- [x] **Priority 5 (age percentile):** Added `draft_age_pctile_in_group` within `(model_group × round_num)`
+- [x] All three college stats caches deleted for clean re-pull
+- [x] Code committed and pushed
+
 **Next session starts here:**
-1. **Source `01c_load_college_stats.R`** — verify match rates by group, fix any column name
-   mismatches in cfbfastR API response, fix college name normalization gaps
-2. **Update `02_feature_engineering.R`** — join college stats, derive position-specific
-   features (qb_cmp_pct, qb_ypa, rush_ypc, rec_ypg, def_sacks_pg, etc.)
-3. **Add college features to `00_config.R`** (`college_features` constant) and `03_model_spec.R`
-4. **Re-run `02` → `03` → `04`** — expect meaningful RMSE improvement once college
-   production features are in
-5. **Check `04` checkpoint results** — if current run completed, evaluate group-level RMSEs
-   before deciding whether to re-run or wait for college features
-6. **Finish Downs article** — add Track Record section, find Saban quote, verify Berry
-   Pro Bowl count, publish
-7. **Source 2026 mock draft picks** → `data/2026_mock_picks.csv`
-8. **Run `source("05_predict_2026.R")`**
+1. **Run `01c_load_college_stats.R`** — full fresh API pull (~5-7 min); verify team stats
+   column names and match rates; fix if team stats pull fails (check logged column names)
+2. **Run `02` → `03` → `04`** in order; target RMSE: LB < 0.97, RB < 0.97, WR/TE < 0.98
+3. **Update `XGB_RMSE_THRESHOLDS`** in `00_config.R` after first successful run with new features
+4. **`05_predict_2026.R` — PINNED, build after RMSE targets hit**
+   - Mock data in hand: `data/combined_board_mock_20260405.csv` (MDDB consensus big board + R1 mock)
+   - Two-tier pick assignment: `mocked_r1` → use `mock_pick`; `best_available` in top 32 → use
+     `big_board_rank` as pick estimate with wide uncertainty window (±10)
+   - Note: MDDB uniqueness constraint obscures vote-splitters (see building in public log 2026-04-05).
+     Don't treat `best_available` as "not going R1."
 
 ---
 

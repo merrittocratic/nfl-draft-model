@@ -165,6 +165,201 @@ draft_fe <- draft_fe |>
 cli::cli_alert_success("Program features computed")
 
 # ============================================================================
+# B2) COLLEGE PRODUCTION FEATURES
+#
+# Coverage cutoffs — hard-coded based on cfbfastR API depth:
+#   pass/rush/rec: 2006+ (cfbfastR covers ~2004; all training classes reached)
+#   def/int:       2012+ (API missing ~14 of 24 seasons; coverage confirmed ~2010+,
+#                         giving full coverage for draft classes 2012+)
+#
+# Within covered seasons: raw stats → within-(season × model_group) percentile.
+#   Neutralizes era-level stat inflation (air-raid QBs throw more ≠ better).
+#   Players with no match stay NA within covered seasons.
+# Outside covered seasons: all stats NA — era flags explain the missingness.
+#   step_indicate_na() in 03_model_spec.R creates explicit _NA indicator columns
+#   so XGBoost distinguishes "unknown" from "no production."
+# ============================================================================
+cli::cli_h1("Joining college production features")
+
+PASS_REC_ERA_CUTOFF <- 2006
+DEF_INT_ERA_CUTOFF  <- 2012
+
+pass_rec_college_features <- c(
+  "qb_cmp_pct", "qb_ypa", "qb_td_pct", "qb_int_pct",
+  "rush_ypc", "rush_att",
+  "rec_ypr", "rec_rec", "rec_td"
+)
+
+def_int_college_features <- c(
+  "def_tot", "def_sacks", "def_tfl", "def_pbu",
+  "int_int", "int_yds"
+)
+
+# YOY trajectory columns (yr1=latest, yr2=penultimate season)
+yoy_cols <- c(
+  "qb_ypa_yr1",   "qb_ypa_yr2",
+  "rec_ypr_yr1",  "rec_ypr_yr2",
+  "rush_ypc_yr1", "rush_ypc_yr2",
+  "def_tot_yr1",  "def_tot_yr2"
+)
+# Domination (share-of-team-production) columns
+domination_raw_cols <- c("rec_yds_share", "rush_yds_share", "qb_yds_per_play")
+
+college_stats_raw <- read_rds("data/01c_college_stats.rds") |>
+  select(season, pick,
+         all_of(pass_rec_college_features),
+         all_of(def_int_college_features),
+         any_of(yoy_cols),
+         any_of(domination_raw_cols),
+         conf_tier)
+
+draft_fe <- draft_fe |>
+  left_join(college_stats_raw, by = c("season", "pick")) |>
+  # def_sacks exists in both nflreadr draft data (.x) and college stats (.y)
+  # Keep the college production version; drop the nflreadr career stat
+  rename(def_sacks = def_sacks.y) |>
+  select(-def_sacks.x) |>
+  mutate(
+    pass_coverage_era = season >= PASS_REC_ERA_CUTOFF,
+    def_coverage_era  = season >= DEF_INT_ERA_CUTOFF
+  )
+
+# Mask position-inappropriate stats before percentile computation.
+# Prevents false name matches from leaking signal across position groups
+# (e.g., a safety matched to a QB's passing stats, a LB matched to RB rushing).
+# Any stat set to NA here will produce NA percentile — no imputation needed.
+draft_fe <- draft_fe |>
+  mutate(
+    across(c(qb_cmp_pct, qb_ypa, qb_td_pct, qb_int_pct),
+           ~ if_else(model_group == "qb", ., NA_real_)),
+    across(c(rush_ypc, rush_att),
+           ~ if_else(model_group %in% c("qb", "rb", "wr_te"), ., NA_real_)),
+    across(c(rec_ypr, rec_rec, rec_td),
+           ~ if_else(model_group %in% c("rb", "wr_te"), ., NA_real_)),
+    across(c(def_tot, def_sacks, def_tfl, def_pbu),
+           ~ if_else(model_group %in% c("dl", "lb", "cb", "s"), ., NA_real_)),
+    across(c(int_int, int_yds),
+           ~ if_else(model_group %in% c("lb", "cb", "s"), ., NA_real_))
+  )
+
+# Step 1: all groups — rank within (season, model_group)
+draft_fe <- draft_fe |>
+  group_by(season, model_group) |>
+  mutate(
+    across(
+      all_of(pass_rec_college_features),
+      ~ if_else(pass_coverage_era, percent_rank(.), NA_real_),
+      .names = "{.col}_pctile"
+    ),
+    across(
+      all_of(def_int_college_features),
+      ~ if_else(def_coverage_era, percent_rank(.), NA_real_),
+      .names = "{.col}_pctile"
+    )
+  ) |>
+  ungroup()
+
+# Step 2: re-rank rec_* for wr_te group at (season, position) level.
+# WR and TE receiving stats are on different scales — a TE with 60 receptions
+# is elite; a WR with 60 is average. Mixed (season, model_group) percentile
+# dilutes both signals. Position-level ranking fixes this.
+rec_base_features <- pass_rec_college_features[str_starts(pass_rec_college_features, "rec_")]
+rec_pctile_cols   <- paste0(rec_base_features, "_pctile")
+
+draft_fe <- draft_fe |>
+  group_by(season, position) |>
+  mutate(
+    across(
+      all_of(rec_pctile_cols),
+      ~ if_else(
+          model_group == "wr_te" & pass_coverage_era,
+          percent_rank(.data[[str_remove(cur_column(), "_pctile")]]),
+          .
+        )
+    )
+  ) |>
+  ungroup()
+
+college_pctile_features <- c(
+  paste0(pass_rec_college_features, "_pctile"),
+  paste0(def_int_college_features,  "_pctile")
+)
+
+# ============================================================================
+# B3) YEAR-OVER-YEAR TRAJECTORY FEATURES
+# Breakout trajectory in the final college season is a known draft predictor.
+# yr1 = latest season, yr2 = penultimate (from 01c_load_college_stats.R).
+# YOY pctile = within-(season × model_group) rank of season-over-season change.
+# ============================================================================
+cli::cli_h1("Computing YOY trajectory features")
+
+draft_fe <- draft_fe |>
+  mutate(
+    qb_ypa_yoy   = if_else(!is.na(qb_ypa_yr1)   & !is.na(qb_ypa_yr2)   & qb_ypa_yr2   > 0,
+                            (qb_ypa_yr1   - qb_ypa_yr2)   / qb_ypa_yr2,   NA_real_),
+    rec_ypr_yoy  = if_else(!is.na(rec_ypr_yr1)  & !is.na(rec_ypr_yr2)  & rec_ypr_yr2  > 0,
+                            (rec_ypr_yr1  - rec_ypr_yr2)  / rec_ypr_yr2,  NA_real_),
+    rush_ypc_yoy = if_else(!is.na(rush_ypc_yr1) & !is.na(rush_ypc_yr2) & rush_ypc_yr2 > 0,
+                            (rush_ypc_yr1 - rush_ypc_yr2) / rush_ypc_yr2, NA_real_),
+    def_tot_yoy  = if_else(!is.na(def_tot_yr1)  & !is.na(def_tot_yr2)  & def_tot_yr2  > 0,
+                            (def_tot_yr1  - def_tot_yr2)  / def_tot_yr2,  NA_real_)
+  )
+
+yoy_raw_cols <- c("qb_ypa_yoy", "rec_ypr_yoy", "rush_ypc_yoy", "def_tot_yoy")
+
+draft_fe <- draft_fe |>
+  group_by(season, model_group) |>
+  mutate(across(all_of(yoy_raw_cols), percent_rank, .names = "{.col}_pctile")) |>
+  ungroup()
+
+cli::cli_alert_success("YOY trajectory features computed")
+
+# ============================================================================
+# B4) DOMINATION FEATURES (percentile within season × model_group)
+# Share of team production — captures "alpha option" status independent of scheme.
+# ============================================================================
+cli::cli_h1("Computing domination feature percentiles")
+
+# Mask to appropriate position groups before ranking
+draft_fe <- draft_fe |>
+  mutate(
+    rec_yds_share   = if_else(model_group %in% c("wr_te", "rb"), rec_yds_share,   NA_real_),
+    rush_yds_share  = if_else(model_group == "rb",               rush_yds_share,  NA_real_),
+    qb_yds_per_play = if_else(model_group == "qb",               qb_yds_per_play, NA_real_)
+  )
+
+domination_cols <- c("rec_yds_share", "rush_yds_share", "qb_yds_per_play")
+
+draft_fe <- draft_fe |>
+  group_by(season, model_group) |>
+  mutate(
+    across(
+      all_of(domination_cols),
+      ~ if_else(pass_coverage_era, percent_rank(.), NA_real_),
+      .names = "{.col}_pctile"
+    )
+  ) |>
+  ungroup()
+
+cli::cli_alert_success("Domination feature percentiles computed")
+
+cli::cli_alert_success("College production features joined")
+
+draft_fe |>
+  filter(season %in% DRAFT_YEARS_TRAIN) |>
+  group_by(model_group) |>
+  summarise(
+    n              = n(),
+    pct_qb_pctile  = mean(!is.na(qb_cmp_pct_pctile)),
+    pct_rush_pctile = mean(!is.na(rush_ypc_pctile)),
+    pct_rec_pctile  = mean(!is.na(rec_ypr_pctile)),
+    pct_def_pctile  = mean(!is.na(def_tot_pctile)),
+    pct_int_pctile  = mean(!is.na(int_int_pctile)),
+    .groups = "drop"
+  ) |>
+  print()
+
+# ============================================================================
 # C) COMPOSITE ATHLETICISM SCORES
 # ============================================================================
 cli::cli_h1("Computing composite athleticism scores")
@@ -209,11 +404,20 @@ draft_fe <- draft_fe |>
 
 draft_fe <- draft_fe |>
   mutate(
-    draft_age = age,
-    college_years = pmin(pmax(round(draft_age - 18), 1), 6),
-    is_underclassman = college_years <= 3
+    draft_age        = age,
+    college_years    = pmin(pmax(round(draft_age - 18), 1), 6),
+    is_underclassman = college_years <= 3,
+    is_te            = as.integer(position == "TE")
     # log_pick and round_num already computed in section A
   )
+
+# Draft age within (model_group × round_num) — captures "unusually young for a CB"
+# signal that absolute draft_age alone misses (a 20-yr-old 1st-round CB is different
+# from a 22-yr-old 1st-round CB, even if raw age differences look small).
+draft_fe <- draft_fe |>
+  group_by(model_group, round_num) |>
+  mutate(draft_age_pctile_in_group = percent_rank(draft_age)) |>
+  ungroup()
 
 # ============================================================================
 # E) CONFERENCE STRENGTH FEATURES
@@ -240,13 +444,27 @@ draft_fe <- draft_fe |>
 # ============================================================================
 
 shared_features <- c(
-  "log_pick", "round_num", "draft_age", "college_years", "is_underclassman",
+  # Draft context
+  "log_pick", "round_num", "draft_age", "draft_age_pctile_in_group",
+  "college_years", "is_underclassman", "is_te",
+  # Combine measurables
   combine_features,
   "athleticism_composite", "n_combine_tests",
+  # Program pipeline
   "prog_pos_n", "prog_pos_av_mean", "prog_pos_av_median",
   "prog_pos_boom_rate", "prog_pos_bust_rate", "prog_pos_avg_pick",
   "prog_all_n", "prog_all_av_mean", "prog_all_boom_rate",
-  "college_av_pctile"
+  "college_av_pctile",
+  # College production (within-year percentiles; NA outside coverage window)
+  college_pctile_features,
+  # YOY trajectory (breakout signal; NA when only one college season available)
+  "qb_ypa_yoy_pctile", "rec_ypr_yoy_pctile", "rush_ypc_yoy_pctile", "def_tot_yoy_pctile",
+  # Domination — share of team production (NA outside coverage window)
+  "rec_yds_share_pctile", "rush_yds_share_pctile", "qb_yds_per_play_pctile",
+  # Coverage era flags — let model distinguish "no data" from "no production"
+  "pass_coverage_era", "def_coverage_era",
+  # Conference tier (categorical; step_dummy() in recipe)
+  "conf_tier"
 )
 
 write_rds(draft_fe, "data/02_draft_features.rds")
@@ -258,12 +476,18 @@ draft_fe |>
   filter(season %in% DRAFT_YEARS_TRAIN, !is.na(av_residual)) |>
   group_by(model_group) |>
   summarise(
-    n = n(),
-    av_mean = mean(av_4yr, na.rm = TRUE),
-    resid_mean = mean(av_residual, na.rm = TRUE),
-    boom_pct = mean(outcome_class == "boom", na.rm = TRUE),
-    bust_pct = mean(outcome_class == "bust", na.rm = TRUE),
+    n           = n(),
+    av_mean     = mean(av_4yr, na.rm = TRUE),
+    resid_mean  = mean(av_residual, na.rm = TRUE),
+    boom_pct    = mean(outcome_class == "boom", na.rm = TRUE),
+    bust_pct    = mean(outcome_class == "bust", na.rm = TRUE),
     combine_pct = mean(n_combine_tests > 0, na.rm = TRUE),
+    # % with primary college production stat populated (position-appropriate)
+    college_pct = mean(
+      !is.na(qb_cmp_pct_pctile) | !is.na(rush_ypc_pctile) |
+      !is.na(rec_ypr_pctile)    | !is.na(def_tot_pctile),
+      na.rm = TRUE
+    ),
     .groups = "drop"
   ) |>
   arrange(desc(n)) |>

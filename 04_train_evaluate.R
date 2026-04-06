@@ -67,7 +67,20 @@ for (group_name in names(model_groups)) {
   )
 
   xgb_best_rmse <- show_best(xgb_tuned, metric = "rmse", n = 1)
-  cli::cli_alert_info("XGB best RMSE: {round(xgb_best_rmse$mean, 2)}")
+  cli::cli_alert_info("XGB best RMSE: {round(xgb_best_rmse$mean, 3)}")
+
+  # Quality gate — abort if XGBoost can't beat the null model threshold.
+  # Thresholds defined in 00_config.R (XGB_RMSE_THRESHOLDS).
+  # Likely causes of failure: recipe bug, feature blowup, data join issue.
+  xgb_threshold <- XGB_RMSE_THRESHOLDS[[group_name]]
+  if (xgb_best_rmse$mean > xgb_threshold) {
+    cli::cli_abort(c(
+      "XGBoost quality gate FAILED for group {group_name}",
+      "x" = "RMSE = {round(xgb_best_rmse$mean, 3)} exceeds threshold {xgb_threshold}",
+      "i" = "Null model RMSE ~ 1.0. Check recipe, feature engineering, or data join.",
+      "i" = "Adjust XGB_RMSE_THRESHOLDS in 00_config.R if threshold needs updating."
+    ))
+  }
 
   # -----------------------------------------------------------------------
   # TabPFN — zero-shot, manual CV via callr subprocess
@@ -119,7 +132,7 @@ for (group_name in names(model_groups)) {
   cli::cli_alert_info("Tuning TabNet...")
 
   tabnet_wf <- workflow() |>
-    add_recipe(make_recipe(group_data)) |>
+    add_recipe(make_tabnet_recipe(group_data)) |>  # imputes college pctile NAs for TabNet
     add_model(tabnet_spec)
 
   tabnet_tuned <- tune_grid(

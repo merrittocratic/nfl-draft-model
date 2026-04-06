@@ -6,6 +6,8 @@
 #   - Workflow map for all 8 sub-models
 # ============================================================================
 source("00_config.R")
+library(tabnet)
+library(torch)
 
 draft_fe       <- read_rds("data/02_draft_features.rds")
 shared_features <- read_rds("data/02_feature_names.rds")
@@ -40,9 +42,13 @@ iwalk(model_groups, ~ cli::cli_alert_info("{.y}: {nrow(.x)} players"))
 # .seed) are bound inside that environment, so they're available in parallel
 # worker sessions without needing 00_config.R to be sourced.
 make_recipe <- local({
-  .combine_features <- combine_features
-  .shared_features  <- shared_features
-  .seed             <- SEED
+  .combine_features        <- combine_features
+  .shared_features         <- shared_features
+  # College pctile features derived from shared_features — avoids a separate RDS.
+  # Excludes college_av_pctile (program pipeline feature, not college production).
+  .college_pctile_features <- str_subset(shared_features, "_pctile$") |>
+    setdiff("college_av_pctile")
+  .seed                    <- SEED
 
   function(data) {
     recipe(av_residual_z ~ ., data = data |> select(
@@ -50,6 +56,11 @@ make_recipe <- local({
       position_in_group,
       all_of(.shared_features)
     )) |>
+      # NA indicators for college features — created BEFORE imputation so they
+      # capture true missingness. _NA = 1 means either coverage gap or no match.
+      # XGBoost uses these alongside the era flags to distinguish "unknown" from
+      # "no production." Must precede step_impute_* on college features.
+      step_indicate_na(all_of(.college_pctile_features)) |>
       step_impute_bag(
         all_of(.combine_features),
         trees    = 25,
@@ -57,16 +68,37 @@ make_recipe <- local({
       ) |>
       step_impute_median(starts_with("prog_")) |>
       step_impute_median(college_av_pctile) |>
+      # College pctile NAs are intentional: XGBoost handles them natively and the
+      # step_indicate_na() indicators above already encode missingness as a signal.
+      # Imputing to 0.5 creates spurious "real vs imputed" splits (artifact).
+      # TabNet requires complete data — use make_tabnet_recipe() instead.
       step_mutate(
-        missing_forty    = as.integer(is.na(forty)),
-        missing_bench    = as.integer(is.na(bench)),
-        missing_agility  = as.integer(is.na(cone) & is.na(shuttle)),
-        is_underclassman = as.integer(is_underclassman)
+        missing_forty     = as.integer(is.na(forty)),
+        missing_bench     = as.integer(is.na(bench)),
+        missing_agility   = as.integer(is.na(cone) & is.na(shuttle)),
+        is_underclassman  = as.integer(is_underclassman),
+        pass_coverage_era = as.integer(pass_coverage_era),
+        def_coverage_era  = as.integer(def_coverage_era)
       ) |>
-      step_dummy(position_in_group) |>   # dummy-encode before zv check
-      step_zv(all_predictors()) |>       # now safe: drops constant dummies too
+      step_unknown(conf_tier, new_level = "unknown") |>  # NA → "unknown" level
+      step_novel(conf_tier) |>                           # handle unseen levels in 2026
+      step_dummy(position_in_group, conf_tier) |>        # dummy-encode before zv check
+      step_zv(all_predictors()) |>                       # drops constant dummies too
       step_normalize(all_numeric_predictors()) |>
       step_nzv(all_predictors())
+  }
+})
+
+# TabNet requires all NAs to be imputed (no native NA handling in torch).
+# This wraps make_recipe() and appends median imputation for college pctile features.
+# XGBoost uses make_recipe() directly — NAs left in place for native handling.
+make_tabnet_recipe <- local({
+  .college_pctile_features <- str_subset(shared_features, "_pctile$") |>
+    setdiff("college_av_pctile")
+
+  function(data) {
+    make_recipe(data) |>
+      step_impute_median(all_of(.college_pctile_features))
   }
 })
 
@@ -180,17 +212,18 @@ draft_metrics <- metric_set(rmse, rsq, mae)
 
 write_rds(
   list(
-    model_groups    = model_groups,
-    make_recipe     = make_recipe,
-    make_folds      = make_folds,
-    xgb_spec        = xgb_spec,
-    rf_spec         = rf_spec,
-    tabnet_spec     = tabnet_spec,
-    xgb_grid        = xgb_grid,
-    rf_grid         = rf_grid,
-    tabnet_grid     = tabnet_grid,
-    draft_metrics   = draft_metrics,
-    shared_features = shared_features
+    model_groups        = model_groups,
+    make_recipe         = make_recipe,
+    make_tabnet_recipe  = make_tabnet_recipe,
+    make_folds          = make_folds,
+    xgb_spec            = xgb_spec,
+    rf_spec             = rf_spec,
+    tabnet_spec         = tabnet_spec,
+    xgb_grid            = xgb_grid,
+    rf_grid             = rf_grid,
+    tabnet_grid         = tabnet_grid,
+    draft_metrics       = draft_metrics,
+    shared_features     = shared_features
   ),
   "data/03_model_specs.rds"
 )

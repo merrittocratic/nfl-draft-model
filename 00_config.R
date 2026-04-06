@@ -66,6 +66,22 @@ combine_features <- c(
   "broad_jump", "cone", "shuttle"
 )
 
+# -- XGBoost RMSE Quality Gates -----------------------------------------------
+# av_residual_z is standardized (sd ≈ 1), so null model RMSE ≈ 1.0.
+# Thresholds set at null + 5% as initial conservative sanity checks.
+# Update these after the first successful full run with observed group RMSEs.
+# If XGBoost exceeds threshold for any group, 04_train_evaluate.R aborts.
+XGB_RMSE_THRESHOLDS <- c(
+  qb    = 1.05,
+  wr_te = 1.05,
+  dl    = 1.05,
+  ol    = 1.05,
+  cb    = 1.05,
+  s     = 1.05,
+  lb    = 1.05,
+  rb    = 1.05
+)
+
 # -- Output paths -------------------------------------------------------------
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 dir.create("output", showWarnings = FALSE, recursive = TRUE)
