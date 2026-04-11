@@ -604,6 +604,9 @@ shared_features <- c(
   "team_pos_n", "team_pos_resid_mean", "team_pos_boom_rate", "team_pos_bust_rate",
   "team_pos_retention_2yr", "team_all_n", "team_all_resid_mean",
   "team_all_boom_rate", "team_all_retention_2yr",
+  # Pro day source indicators — lets model learn whether combine vs. pro day matters
+  # Values: "combine", "pro_day", "missing"
+  "forty_src", "bench_src", "vertical_src", "broad_jump_src", "cone_src", "shuttle_src",
   # Era signal — pairs with season covariate in AV curve to let model recapture
   # era effects removed from the outcome (QB AV inflation, EDGE rush premium, etc.)
   "draft_year_scaled"

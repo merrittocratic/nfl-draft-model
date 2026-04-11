@@ -80,9 +80,14 @@ make_recipe <- local({
         pass_coverage_era = as.integer(pass_coverage_era),
         def_coverage_era  = as.integer(def_coverage_era)
       ) |>
-      step_unknown(conf_tier, new_level = "unknown") |>  # NA → "unknown" level
-      step_novel(conf_tier) |>                           # handle unseen levels in 2026
-      step_dummy(position_in_group, conf_tier) |>        # dummy-encode before zv check
+      step_unknown(conf_tier, forty_src, bench_src, vertical_src,
+                   broad_jump_src, cone_src, shuttle_src,
+                   new_level = "unknown") |>
+      step_novel(conf_tier, forty_src, bench_src, vertical_src,
+                 broad_jump_src, cone_src, shuttle_src) |>
+      step_dummy(position_in_group, conf_tier,
+                 forty_src, bench_src, vertical_src,
+                 broad_jump_src, cone_src, shuttle_src) |>
       step_zv(all_predictors()) |>                       # drops constant dummies too
       # No step_normalize for XGBoost — trees are scale-invariant; normalization
       # only distorts step_nzv evaluation (binary indicators look near-zero-variance)

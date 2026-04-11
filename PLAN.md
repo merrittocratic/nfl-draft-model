@@ -166,33 +166,52 @@
 - [x] All three college stats caches deleted for clean re-pull
 - [x] Code committed and pushed
 
+---
+
+### Session 8 — 2026-04-11
+**Completed:**
+- [x] **Pro day data integration (Phase 6 complete):**
+  - `01e_scrape_pro_day.R`: Two-phase MockDraftable API fetch (slug resolution + batch measurements)
+  - Fills ~10% of missing combine measurables: 58 forty times, 144 bench, 148 cone, 166 shuttle
+  - `01_load_data.R`: hybrid coalesce (combine → pro day), `{measurable}_src` indicator columns added
+  - `02_feature_engineering.R`: src columns added to `shared_features`
+  - `03_model_spec.R`: src columns handled as categoricals (step_unknown + step_novel + step_dummy)
+- [x] **TabNet disabled** (`RUN_TABNET <- FALSE`): was taking 12-14 hours, never beating null model
+  on any group. One flag to re-enable for final pre-draft run if desired. Runtime: 12-14h → 2-3h.
+- [x] `qb_int_pct_yoy` added to `01c` and wired through `02` — year-over-year INT rate trajectory
+- [x] Team development leaderboard: `content_team_dev_leaderboard.R` + lollipop chart
+  - Both relocated franchises (STL→LAR, SDG→LAC) improved dramatically post-move
+- [x] Various bug fixes: `normalize_franchise` coalesce, `qb_int_pct_yr1/yr2` missing from `yoy_cols`,
+  `01c` re-run to regenerate with new columns
+- [x] `02` → `03` → `04` kicked off (04 running overnight)
+
 **Next session starts here:**
-1. **Run `01c_load_college_stats.R`** — full fresh API pull (~5-7 min); verify team stats
-   column names and match rates; fix if team stats pull fails (check logged column names)
-2. **Run `02` → `03` → `04`** in order; target RMSE: LB < 0.97, RB < 0.97, WR/TE < 0.98
-3. **Update `XGB_RMSE_THRESHOLDS`** in `00_config.R` after first successful run with new features
-4. **`05_predict_2026.R` — PINNED, build after RMSE targets hit**
+1. **Check `04` results** — review RMSE table across all 8 groups; note any regressions vs. Session 7
+2. **Build `05_predict_2026.R`** — this is the priority
    - Mock data in hand: `data/combined_board_mock_20260405.csv` (MDDB consensus big board + R1 mock)
    - Two-tier pick assignment: `mocked_r1` → use `mock_pick`; `best_available` in top 32 → use
      `big_board_rank` as pick estimate with wide uncertainty window (±10)
-   - Note: MDDB uniqueness constraint obscures vote-splitters (see building in public log 2026-04-05).
-     Don't treat `best_available` as "not going R1."
+   - Note: MDDB uniqueness constraint obscures vote-splitters (see building in public log 2026-04-05)
+   - 2026 combine data: `nflreadr::load_combine(seasons = 2026)` — verify coverage
+   - Pro day src columns need to be populated for 2026 prospects (most will be "missing" or "combine")
+3. **Variable importance plots** — quick win post-scoring; shows which features drive each group
 
 ---
 
 ## Context
-The 2026 NFL Draft is April 24–26, 2026 (~30 days away). The pipeline code exists and is largely complete, but has never been run end-to-end against real data. The goal is to get the model producing accurate predictions for the 2026 draft class. Social media content is out of scope for now.
+The 2026 NFL Draft is April 24–26, 2026 (13 days away). Pipeline is complete and running.
+`04_train_evaluate.R` is running overnight (Session 8). Tomorrow's priority is `05_predict_2026.R`.
 
 Key gaps blocking a working model:
 1. ~~Environment not validated~~ — **RESOLVED**
-2. ~~`career_av` proxy~~ — **RESOLVED**: true 4-year AV via PFR CSV exports (in progress)
-3. ~~Column name mismatches in `01_load_data.R`~~ — **RESOLVED**
+2. ~~`career_av` proxy~~ — **RESOLVED**: true 4-year AV via PFR CSV exports
+3. ~~Column name mismatches~~ — **RESOLVED**
 4. ~~Combine join fuzziness~~ — **RESOLVED**: fuzzyjoin implemented
-5. ~~`ht` stored as string~~ — **RESOLVED**: converted to numeric inches in `02_feature_engineering.R`
-6. **PFR CSV collection in progress** — 60 CSVs needed, drop in `data/pfr_av_raw/`
-7. `01_load_data.R` needs update to join `01b_av_4yr.rds` once CSVs are collected
-8. Conference mapping is a placeholder
-9. 2026 mock draft picks not yet sourced
+5. ~~`ht` stored as string~~ — **RESOLVED**
+6. ~~PFR CSV collection~~ — **RESOLVED**: 60 CSVs, `01b_av_4yr.rds` generated
+7. ~~Pro day data missing~~ — **RESOLVED**: MockDraftable API, src indicators in model
+8. **Conference mapping** — still a placeholder; low priority given time constraint
+9. **2026 scoring** — `05_predict_2026.R` not yet built; mock data in hand
 
 ---
 
@@ -299,15 +318,13 @@ Implementation:
 
 ---
 
-## Phase 6: Pro Day Data Integration (Enhancement)
-*Do after baseline model is running. Strong content angle.*
+## Phase 6: Pro Day Data Integration ✅ COMPLETE
 
-From CLAUDE.md TODO #8:
-- Scrape pro day measurements from NFLCombineResults.com (rvest + polite, same pattern as 01b)
-- For each combine measurable: store actual value (combine OR pro day), add `{measurable}_source` indicator ("combine" / "pro_day" / "missing")
-- Only impute when BOTH are missing
-- Lets model learn whether data source matters (pro day 4.35 ≠ combine 4.35)
-- Adds content angle: "Why pro day numbers lie"
+- Source: MockDraftable.com open JSON API (NFLCombineResults blocked)
+- `01e_scrape_pro_day.R`: two-phase slug resolution + batch fetch; file-cached
+- Fill rate: ~10% of missing values recovered (~58 forty, ~144 bench, ~148 cone)
+- `{measurable}_src` indicator features ("combine"/"pro_day"/"missing") in model
+- Content angle: "Why pro day numbers lie" — Substack post material
 
 ---
 
@@ -340,28 +357,27 @@ From CLAUDE.md TODO #8:
 |----------|------|--------|----------|
 | 1 | Phase 1: Environment setup | ✅ Done | — |
 | 2 | Phase 2a–2b: Data load + fuzzy join | ✅ Done | — |
-| 3 | Phase 2c: 01b PFR CSV ingestion | ✅ Done — 60 CSVs, `01b_av_4yr.rds` generated | — |
-| 4 | Update 01_load_data.R to join 01b output | ✅ Done — real 4yr AV wired, DB fix applied | — |
-| 5 | Phase 3: Feature engineering validation | ✅ Done — position-specific log-pick curves, re-run with real AV + 8 groups | — |
-| 6 | Fix 03_model_spec.R (7→8 group message) | ⏳ Next — trivial | No |
-| 7 | Verify TabPFN R API in 04_train_evaluate.R | ⏳ Next — potential blocker | Yes for TabPFN |
-| 8 | Phase 4: Model training (03 → 04) | ⏳ Not started | No (XGB/TabNet can run without TabPFN) |
-| 9 | Source 2026 mock draft picks | ⏳ Not started | Yes for scoring |
-| 10 | Phase 5: 2026 scoring (05) | ⏳ Not started | Needs mock picks + trained models |
-| 11 | Phase 6: Pro day integration | ⏳ Not started | No — enhancement |
-| 12 | Phase 7: Diagnostics + viz | ⏳ Not started | No — but high value |
+| 3 | Phase 2c: 01b PFR CSV ingestion | ✅ Done | — |
+| 4 | Phase 3: Feature engineering | ✅ Done — college stats, YOY, domination, pro day src, team dev | — |
+| 5 | Phase 4: Model training | 🔄 Running — 04 kicked off Session 8, results tomorrow | — |
+| 6 | Phase 6: Pro day integration | ✅ Done — MockDraftable API, src indicator features in model | — |
+| 7 | Phase 5: 2026 scoring (05) | ⏳ Tomorrow — first priority | Needs 04 results |
+| 8 | Phase 7a: Variable importance plots | ⏳ After scoring | No |
+| 9 | Calibration check | ⏳ After scoring | No |
+| 10 | Conference mapping | ⏳ Low priority — placeholder acceptable for launch | No |
 
 ---
 
 ## Critical Files
-- `00_config.R` — ✅ clean, 8 model groups defined (cb/s split)
-- `01_load_data.R` — ✅ real 4yr AV joined, DB resolution via combine pos
-- `01b_scrape_av.R` — ✅ run, output exists (`data/01b_av_4yr.rds`)
-- `02_feature_engineering.R` — ✅ position-specific log-pick curves, re-run; conference table still a placeholder
-- `02b_feature_engineering.R` — ✅ new; cross-position pick bin baseline preserved for comparison → `data/02b_draft_features.rds`
-- `03_model_spec.R` — ⚠️ minor: says "7 model groups" in final message; will auto-handle 8 groups from data
-- `04_train_evaluate.R` — ⚠️ TabPFN API unverified; XGBoost + TabNet sections look correct
-- `05_predict_2026.R` — ⚠️ DB routing for 2026 prospects uses combine pos directly (less of an issue); needs mock picks
+- `00_config.R` — ✅ clean, 8 model groups, RMSE thresholds at 0.999
+- `01_load_data.R` — ✅ real 4yr AV, DB resolution, pro day hybrid coalesce + src columns
+- `01b_scrape_av.R` — ✅ `data/01b_av_4yr.rds` (3,432 players)
+- `01c_load_college_stats.R` — ✅ passing/rushing/receiving/defensive stats + team domination + YOY
+- `01e_scrape_pro_day.R` — ✅ MockDraftable API, `data/01e_pro_day.rds` (cached)
+- `02_feature_engineering.R` — ✅ all features including pro day src, college pctiles, YOY, team dev
+- `03_model_spec.R` — ✅ XGBoost + TabPFN; TabNet disabled (RUN_TABNET=FALSE)
+- `04_train_evaluate.R` — 🔄 running overnight
+- `05_predict_2026.R` — ⏳ not yet built; tomorrow's priority
 
 ---
 
