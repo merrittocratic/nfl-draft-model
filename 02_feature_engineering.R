@@ -165,6 +165,102 @@ draft_fe <- draft_fe |>
 cli::cli_alert_success("Program features computed")
 
 # ============================================================================
+# B2_team) NFL TEAM DEVELOPMENT FEATURES (Rolling 10-Year Window)
+#
+# Measures each drafting franchise's historical track record at developing
+# picks — same rolling leave-one-out structure as program pipeline features.
+#
+# Key distinction from program pipeline:
+#   - Uses av_residual_z (pick-adjusted) not raw av_4yr, so a team that
+#     drafts in the top-5 every year doesn't get credit just for high picks
+#   - Includes retention_rate: % of picks still on roster in year 2.
+#     Teams that draft players and immediately give up signal evaluation
+#     AND development failure — organizational disconnect.
+#   - left_drafter_yr2 comes from 01b: precise year-2 team comparison
+#     with franchise relocation handling (STL/LAR, SDG/LAC, OAK/LVR)
+# ============================================================================
+cli::cli_h1("Engineering NFL team development features")
+
+compute_team_features <- function(data, target_season, target_team,
+                                   target_model_group) {
+  window_start <- target_season - TEAM_WINDOW
+
+  team_history <- data |>
+    filter(
+      season >= window_start,
+      season < target_season,
+      team == target_team,
+      model_group == target_model_group,
+      !is.na(av_residual_z)
+    )
+
+  team_all <- data |>
+    filter(
+      season >= window_start,
+      season < target_season,
+      team == target_team,
+      !is.na(av_residual_z)
+    )
+
+  tibble(
+    team_pos_n             = nrow(team_history),
+    team_pos_resid_mean    = if (nrow(team_history) > 0)
+      mean(team_history$av_residual_z, na.rm = TRUE) else NA_real_,
+    team_pos_boom_rate     = if (nrow(team_history) > 0)
+      mean(team_history$outcome_class == "boom", na.rm = TRUE) else NA_real_,
+    team_pos_bust_rate     = if (nrow(team_history) > 0)
+      mean(team_history$outcome_class == "bust", na.rm = TRUE) else NA_real_,
+    # Retention: % still with drafting team in year 2
+    # NA left_drafter_yr2 (no year-2 data) treated as departed — team couldn't
+    # develop them regardless of reason
+    team_pos_retention_2yr = if (nrow(team_history) > 0)
+      mean(!coalesce(team_history$left_drafter_yr2, TRUE), na.rm = TRUE) else NA_real_,
+    team_all_n             = nrow(team_all),
+    team_all_resid_mean    = if (nrow(team_all) > 0)
+      mean(team_all$av_residual_z, na.rm = TRUE) else NA_real_,
+    team_all_boom_rate     = if (nrow(team_all) > 0)
+      mean(team_all$outcome_class == "boom", na.rm = TRUE) else NA_real_,
+    team_all_retention_2yr = if (nrow(team_all) > 0)
+      mean(!coalesce(team_all$left_drafter_yr2, TRUE), na.rm = TRUE) else NA_real_
+  )
+}
+
+cli::cli_alert_info("Computing team development features (leave-one-out, {TEAM_WINDOW}-year window)...")
+
+team_features <- draft_fe |>
+  filter(!is.na(team)) |>
+  select(season, pick, team, model_group) |>
+  pmap_dfr(function(season, pick, team, model_group) {
+    compute_team_features(draft_fe, season, team, model_group) |>
+      mutate(season = season, pick = pick)
+  })
+
+draft_fe <- draft_fe |>
+  left_join(team_features, by = c("season", "pick"))
+
+cli::cli_alert_success("Team development features computed")
+
+# Quick leaderboard — most interesting content output
+cli::cli_alert_info("Team development quality leaderboard (training data, min 10 picks):")
+team_dev_leaderboard <- draft_fe |>
+  filter(season %in% DRAFT_YEARS_TRAIN) |>
+  group_by(team) |>
+  summarise(
+    n_picks          = n(),
+    resid_mean       = mean(av_residual_z, na.rm = TRUE),
+    boom_rate        = mean(outcome_class == "boom", na.rm = TRUE),
+    bust_rate        = mean(outcome_class == "bust", na.rm = TRUE),
+    retention_2yr    = mean(!coalesce(left_drafter_yr2, TRUE), na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(n_picks >= 10) |>
+  arrange(desc(resid_mean))
+
+print(team_dev_leaderboard, n = 34)
+write_csv(team_dev_leaderboard, "output/team_dev_leaderboard.csv")
+cli::cli_alert_success("Saved output/team_dev_leaderboard.csv")
+
+# ============================================================================
 # B2) COLLEGE PRODUCTION FEATURES
 #
 # Coverage cutoffs — hard-coded based on cfbfastR API depth:
@@ -182,7 +278,11 @@ cli::cli_alert_success("Program features computed")
 cli::cli_h1("Joining college production features")
 
 PASS_REC_ERA_CUTOFF <- 2006
-DEF_INT_ERA_CUTOFF  <- 2012
+# SR supplemental (01d) covers 2002–2015; cfbfastR covers 2016+.
+# Combined source is complete for all training classes (2006–2020).
+# Cutoff set to 2005 to exclude 2004/2005 draft classes where coverage
+# is partial (only 1–2 college seasons available in the SR data).
+DEF_INT_ERA_CUTOFF  <- 2005
 
 pass_rec_college_features <- c(
   "qb_cmp_pct", "qb_ypa", "qb_td_pct", "qb_int_pct",
@@ -197,10 +297,11 @@ def_int_college_features <- c(
 
 # YOY trajectory columns (yr1=latest, yr2=penultimate season)
 yoy_cols <- c(
-  "qb_ypa_yr1",   "qb_ypa_yr2",
-  "rec_ypr_yr1",  "rec_ypr_yr2",
-  "rush_ypc_yr1", "rush_ypc_yr2",
-  "def_tot_yr1",  "def_tot_yr2"
+  "qb_ypa_yr1",     "qb_ypa_yr2",
+  "qb_int_pct_yr1", "qb_int_pct_yr2",
+  "rec_ypr_yr1",    "rec_ypr_yr2",
+  "rush_ypc_yr1",   "rush_ypc_yr2",
+  "def_tot_yr1",    "def_tot_yr2"
 )
 # Domination (share-of-team-production) columns
 domination_raw_cols <- c("rec_yds_share", "rush_yds_share", "qb_yds_per_play")
@@ -259,26 +360,29 @@ draft_fe <- draft_fe |>
   ) |>
   ungroup()
 
-# Step 2: re-rank rec_* for wr_te group at (season, position) level.
-# WR and TE receiving stats are on different scales — a TE with 60 receptions
-# is elite; a WR with 60 is average. Mixed (season, model_group) percentile
-# dilutes both signals. Position-level ranking fixes this.
-rec_base_features <- pass_rec_college_features[str_starts(pass_rec_college_features, "rec_")]
-rec_pctile_cols   <- paste0(rec_base_features, "_pctile")
+# Step 2: re-rank rec_* and rush_* for wr_te group at (season, position) level.
+# WR and TE stats are on different scales — a TE with 60 receptions is elite;
+# a WR with 60 is average. rush_att_pctile is the top WR/TE feature — but TEs
+# have near-zero rushing, inflating WR rush percentiles in mixed ranking.
+# Position-level ranking fixes both signals.
+rec_base_features  <- pass_rec_college_features[str_starts(pass_rec_college_features, "rec_")]
+rush_base_features <- pass_rec_college_features[str_starts(pass_rec_college_features, "rush_")]
+rec_pctile_cols    <- paste0(rec_base_features,  "_pctile")
+rush_pctile_cols   <- paste0(rush_base_features, "_pctile")
 
-draft_fe <- draft_fe |>
-  group_by(season, position) |>
-  mutate(
-    across(
-      all_of(rec_pctile_cols),
-      ~ if_else(
-          model_group == "wr_te" & pass_coverage_era,
-          percent_rank(.data[[str_remove(cur_column(), "_pctile")]]),
-          .
-        )
-    )
-  ) |>
-  ungroup()
+for (col in c(rec_pctile_cols, rush_pctile_cols)) {
+  base_col <- str_remove(col, "_pctile")
+  draft_fe <- draft_fe |>
+    group_by(season, position) |>
+    mutate(
+      !!col := if_else(
+        model_group == "wr_te" & pass_coverage_era,
+        percent_rank(.data[[base_col]]),
+        .data[[col]]
+      )
+    ) |>
+    ungroup()
+}
 
 college_pctile_features <- c(
   paste0(pass_rec_college_features, "_pctile"),
@@ -295,17 +399,21 @@ cli::cli_h1("Computing YOY trajectory features")
 
 draft_fe <- draft_fe |>
   mutate(
-    qb_ypa_yoy   = if_else(!is.na(qb_ypa_yr1)   & !is.na(qb_ypa_yr2)   & qb_ypa_yr2   > 0,
-                            (qb_ypa_yr1   - qb_ypa_yr2)   / qb_ypa_yr2,   NA_real_),
-    rec_ypr_yoy  = if_else(!is.na(rec_ypr_yr1)  & !is.na(rec_ypr_yr2)  & rec_ypr_yr2  > 0,
-                            (rec_ypr_yr1  - rec_ypr_yr2)  / rec_ypr_yr2,  NA_real_),
-    rush_ypc_yoy = if_else(!is.na(rush_ypc_yr1) & !is.na(rush_ypc_yr2) & rush_ypc_yr2 > 0,
-                            (rush_ypc_yr1 - rush_ypc_yr2) / rush_ypc_yr2, NA_real_),
-    def_tot_yoy  = if_else(!is.na(def_tot_yr1)  & !is.na(def_tot_yr2)  & def_tot_yr2  > 0,
-                            (def_tot_yr1  - def_tot_yr2)  / def_tot_yr2,  NA_real_)
+    qb_ypa_yoy     = if_else(!is.na(qb_ypa_yr1)     & !is.na(qb_ypa_yr2)     & qb_ypa_yr2     > 0,
+                              (qb_ypa_yr1     - qb_ypa_yr2)     / qb_ypa_yr2,     NA_real_),
+    # INT rate YOY: negative = improvement (fewer INTs), positive = regression
+    # Flip sign so higher percentile = better (fewer INTs in final season)
+    qb_int_pct_yoy = if_else(!is.na(qb_int_pct_yr1) & !is.na(qb_int_pct_yr2) & qb_int_pct_yr2 > 0,
+                              -((qb_int_pct_yr1 - qb_int_pct_yr2) / qb_int_pct_yr2), NA_real_),
+    rec_ypr_yoy    = if_else(!is.na(rec_ypr_yr1)    & !is.na(rec_ypr_yr2)    & rec_ypr_yr2    > 0,
+                              (rec_ypr_yr1    - rec_ypr_yr2)    / rec_ypr_yr2,    NA_real_),
+    rush_ypc_yoy   = if_else(!is.na(rush_ypc_yr1)   & !is.na(rush_ypc_yr2)   & rush_ypc_yr2   > 0,
+                              (rush_ypc_yr1   - rush_ypc_yr2)   / rush_ypc_yr2,   NA_real_),
+    def_tot_yoy    = if_else(!is.na(def_tot_yr1)    & !is.na(def_tot_yr2)    & def_tot_yr2    > 0,
+                              (def_tot_yr1    - def_tot_yr2)    / def_tot_yr2,    NA_real_)
   )
 
-yoy_raw_cols <- c("qb_ypa_yoy", "rec_ypr_yoy", "rush_ypc_yoy", "def_tot_yoy")
+yoy_raw_cols <- c("qb_ypa_yoy", "qb_int_pct_yoy", "rec_ypr_yoy", "rush_ypc_yoy", "def_tot_yoy")
 
 draft_fe <- draft_fe |>
   group_by(season, model_group) |>
@@ -398,6 +506,33 @@ draft_fe <- draft_fe |>
   ) |>
   ungroup()
 
+# Speed Score (Bill Barnwell / Chase Stuart) — weight-adjusted speed.
+# Corrects for body mass: a 240-lb pass rusher running 4.55 >> a 185-lb WR.
+# wt and forty already in draft_fe; ht converted to inches above.
+draft_fe <- draft_fe |>
+  mutate(
+    speed_score = if_else(!is.na(wt) & !is.na(forty) & forty > 0,
+                          (wt * 200) / (forty^4), NA_real_),
+    bmi         = if_else(!is.na(wt) & !is.na(ht) & ht > 0,
+                          (wt / (ht^2)) * 703, NA_real_)
+  )
+
+# Percentile rank within position group — size/speed sweet spot is position-specific
+draft_fe <- draft_fe |>
+  group_by(model_group) |>
+  mutate(
+    speed_score_pctile = percent_rank(speed_score),
+    bmi_pctile         = percent_rank(bmi)
+  ) |>
+  ungroup()
+
+# Era-scaled draft year — centers on training midpoint, lets model detect
+# secular trends (EDGE rush premium post-2010, AV inflation for QBs, etc.)
+draft_fe <- draft_fe |>
+  mutate(draft_year_scaled = (season - 2013) / 7)
+
+cli::cli_alert_success("Speed Score, BMI, and draft_year_scaled computed")
+
 # ============================================================================
 # D) AGE & EXPERIENCE FEATURES
 # ============================================================================
@@ -458,13 +593,20 @@ shared_features <- c(
   # College production (within-year percentiles; NA outside coverage window)
   college_pctile_features,
   # YOY trajectory (breakout signal; NA when only one college season available)
-  "qb_ypa_yoy_pctile", "rec_ypr_yoy_pctile", "rush_ypc_yoy_pctile", "def_tot_yoy_pctile",
+  "qb_ypa_yoy_pctile", "qb_int_pct_yoy_pctile", "rec_ypr_yoy_pctile", "rush_ypc_yoy_pctile", "def_tot_yoy_pctile",
   # Domination — share of team production (NA outside coverage window)
   "rec_yds_share_pctile", "rush_yds_share_pctile", "qb_yds_per_play_pctile",
   # Coverage era flags — let model distinguish "no data" from "no production"
   "pass_coverage_era", "def_coverage_era",
   # Conference tier (categorical; step_dummy() in recipe)
-  "conf_tier"
+  "conf_tier",
+  # NFL team development features (rolling 10-year, pick-adjusted, leave-one-out)
+  "team_pos_n", "team_pos_resid_mean", "team_pos_boom_rate", "team_pos_bust_rate",
+  "team_pos_retention_2yr", "team_all_n", "team_all_resid_mean",
+  "team_all_boom_rate", "team_all_retention_2yr",
+  # Era signal — pairs with season covariate in AV curve to let model recapture
+  # era effects removed from the outcome (QB AV inflation, EDGE rush premium, etc.)
+  "draft_year_scaled"
 )
 
 write_rds(draft_fe, "data/02_draft_features.rds")

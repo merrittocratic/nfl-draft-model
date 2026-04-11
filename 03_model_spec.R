@@ -60,7 +60,7 @@ make_recipe <- local({
       # capture true missingness. _NA = 1 means either coverage gap or no match.
       # XGBoost uses these alongside the era flags to distinguish "unknown" from
       # "no production." Must precede step_impute_* on college features.
-      step_indicate_na(all_of(.college_pctile_features)) |>
+      step_indicate_na(any_of(.college_pctile_features)) |>
       step_impute_bag(
         all_of(.combine_features),
         trees    = 25,
@@ -84,8 +84,11 @@ make_recipe <- local({
       step_novel(conf_tier) |>                           # handle unseen levels in 2026
       step_dummy(position_in_group, conf_tier) |>        # dummy-encode before zv check
       step_zv(all_predictors()) |>                       # drops constant dummies too
-      step_normalize(all_numeric_predictors()) |>
-      step_nzv(all_predictors())
+      # No step_normalize for XGBoost — trees are scale-invariant; normalization
+      # only distorts step_nzv evaluation (binary indicators look near-zero-variance)
+      step_nzv(all_predictors(), freq_cut = 50, unique_cut = 5)
+      # Relaxed thresholds vs defaults (95/5, 10): default drops informative binary
+      # features in small groups (CB n=162, QB n~150) where rare categories are real signal
   }
 })
 
@@ -98,7 +101,8 @@ make_tabnet_recipe <- local({
 
   function(data) {
     make_recipe(data) |>
-      step_impute_median(all_of(.college_pctile_features))
+      step_impute_median(any_of(.college_pctile_features)) |>
+      step_normalize(all_numeric_predictors())  # TabNet requires scaling; XGBoost does not
   }
 })
 
@@ -162,7 +166,7 @@ xgb_grid <- grid_space_filling(
   loss_reduction(range = c(-3, 1)),
   sample_size = sample_prop(range = c(0.5, 0.9)),
   mtry = mtry_prop(range = c(0.3, 0.8)),
-  size = 50
+  size = 75
 )
 
 rf_grid <- grid_space_filling(

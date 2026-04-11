@@ -21,6 +21,14 @@ healthcare analytics — this project is fully separate. Preferences:
   for input** — do not silently proceed with the documented approach or
   unilaterally change direction
 
+## Experimentation Mindset
+This is a side project and the goal is to push envelopes, try new things, and
+have fun. **Do not raise timeline concerns or ask about deadlines until we are
+less than 1 week from the draft (April 17, 2026).** Until then: innovate
+aggressively, experiment freely, and propose bold ideas. If something is
+interesting, try it. If something might work, build it. The spirit is
+"f*** shit up and have fun" — not ship-safe and conservative.
+
 ## Tech Stack
 - **Modeling:** R + tidymodels + nflreadr + XGBoost + TabPFN + TabNet
 - **Visualization:** Observable / D3.js for interactive content embeds
@@ -136,16 +144,18 @@ R/05_predict_2026.R        # Score 2026 draft class, generate player cards
    integrated. Would come from `cfbfastR` or manual sourcing.
 8. **Pro day data integration (hybrid approach):** Combine non-participants
    have real measured data from college pro days that we're currently losing to
-   imputation. Scrape pro day measurements from NFLCombineResults.com (or
-   similar structured source), then implement a hybrid feature approach:
+   imputation. **Source confirmed: NFLCombineResults.com** — no Cloudflare, plain
+   Apache/PHP, no bot protection. URL structure:
+   `https://nflcombineresults.com/nflcombinedata.php?year=YYYY&pos=POS&college=0`
+   Pro day values displayed in italics (`<i>` tags in HTML) — source detection
+   is native from the HTML, no name matching required.
+   - Script: `01e_scrape_pro_day.R` — loop year × position, parse table, flag italics
    - For each combine measurable, store the actual value (combine OR pro day)
    - Add a `{measurable}_source` indicator feature: "combine" / "pro_day" / "missing"
    - Let the model learn whether the data source matters (pro day 4.35 ≠ combine 4.35)
    - Only impute when BOTH combine and pro day are missing
-   - Scraping task is similar to 01b: rvest + polite, cache HTML, respect rate limits
-   - NFLCombineResults.com publishes per-position adjustment factors between
-     combine and pro day — useful for validation but NOT used to adjust the raw
-     values (the source indicator handles this instead)
+   - Do NOT use the site's "Adjust Pro Day Scores" checkbox — want raw values
+   - Coverage gap: 645 players (17%) missing forty time, 1,309 missing bench
    - Content angle: "Why pro day numbers lie" is a Substack post
 9. **Social media risk signal (future model feature):** Explore whether prospect
    social media behavior is a predictive signal for bust probability — specifically

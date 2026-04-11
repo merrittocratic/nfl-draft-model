@@ -153,7 +153,7 @@ if (!file.exists("data/01b_av_4yr.rds")) {
 
 av_4yr_data <- read_rds("data/01b_av_4yr.rds") |>
   select(pfr_id, av_4yr_total, av_yr1, av_yr2, av_yr3, av_yr4,
-         seasons_active_4yr, n_teams_4yr)
+         seasons_active_4yr, n_teams_4yr, left_drafter_yr2)
 
 draft_combined <- draft_combined |>
   left_join(av_4yr_data, by = c("pfr_player_id" = "pfr_id")) |>
@@ -181,7 +181,65 @@ draft_combined |>
   print()
 
 # ============================================================================
-# G) SAVE
+# G) JOIN PRO DAY DATA (hybrid: combine value takes precedence)
+# ============================================================================
+cli::cli_h1("Joining pro day measurements (01e)")
+
+pd_measurables <- c("forty", "bench", "vertical", "broad_jump", "cone", "shuttle")
+
+if (file.exists("data/01e_pro_day.rds")) {
+  pro_day <- read_rds("data/01e_pro_day.rds") |>
+    select(pfr_player_id, all_of(pd_measurables)) |>
+    # ensure numeric — MockDraftable JSON sometimes returns character
+    mutate(across(-pfr_player_id, as.numeric)) |>
+    # one row per player (some may appear twice if slug matched multiple seasons)
+    distinct(pfr_player_id, .keep_all = TRUE) |>
+    rename_with(~ paste0("pd_", .x), all_of(pd_measurables))
+
+  draft_combined <- draft_combined |>
+    left_join(pro_day, by = "pfr_player_id") |>
+    mutate(
+      # source indicators: where did we get this value from?
+      across(
+        all_of(pd_measurables),
+        ~ case_when(
+          !is.na(.x)                                    ~ "combine",
+          !is.na(get(paste0("pd_", cur_column())))      ~ "pro_day",
+          TRUE                                          ~ "missing"
+        ),
+        .names = "{.col}_src"
+      ),
+      # coalesce: prefer combine, fall back to pro day
+      across(
+        all_of(pd_measurables),
+        ~ coalesce(.x, get(paste0("pd_", cur_column())))
+      )
+    ) |>
+    select(-starts_with("pd_"))
+
+  # Coverage report
+  pd_coverage <- tibble(measurable = pd_measurables) |>
+    mutate(
+      n_combine  = map_int(measurable, ~ sum(draft_combined[[paste0(.x, "_src")]] == "combine",  na.rm = TRUE)),
+      n_pro_day  = map_int(measurable, ~ sum(draft_combined[[paste0(.x, "_src")]] == "pro_day",  na.rm = TRUE)),
+      n_missing  = map_int(measurable, ~ sum(draft_combined[[paste0(.x, "_src")]] == "missing",  na.rm = TRUE)),
+      pct_filled = round(n_combine / (n_combine + n_pro_day + n_missing) * 100, 1)
+    )
+
+  cli::cli_alert_success("Pro day integration complete")
+  print(pd_coverage)
+} else {
+  cli::cli_alert_warning("data/01e_pro_day.rds not found — skipping pro day join")
+  # Add missing src columns so downstream code doesn't break
+  for (col in pd_measurables) {
+    draft_combined[[paste0(col, "_src")]] <- if_else(
+      !is.na(draft_combined[[col]]), "combine", "missing"
+    )
+  }
+}
+
+# ============================================================================
+# H) SAVE
 # ============================================================================
 write_rds(draft_combined, "data/01_draft_combined.rds")
 cli::cli_alert_success(

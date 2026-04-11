@@ -12,6 +12,9 @@ data/**/*.csv
 # Model outputs (large binary files)
 output/models/*.rds
 
+# Generated CSVs (content outputs — regenerate from scripts)
+output/*.csv
+
 # Generated figures (binary outputs — regenerate from scripts)
 output/figures/*.png
 output/figures/*.jpg

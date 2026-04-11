@@ -208,8 +208,15 @@ qb_yoy <- raw_all |>
   filter(!is.na(passing_att), passing_att >= 20) |>
   extract_yoy_stat(passing_yds / pmax(passing_att, 1), "qb_ypa")
 
+# YOY INT rate trajectory — year-over-year change in decision-making quality
+# INT rate is the #1 QB feature by Gain; its trajectory is not yet captured
+qb_int_pct_yoy <- raw_all |>
+  filter(!is.na(passing_att), passing_att >= 20) |>
+  extract_yoy_stat(passing_int / pmax(passing_att, 1), "qb_int_pct")
+
 passing_features <- passing_base |>
-  left_join(qb_yoy, by = c("name_norm", "college_norm"))
+  left_join(qb_yoy,         by = c("name_norm", "college_norm")) |>
+  left_join(qb_int_pct_yoy, by = c("name_norm", "college_norm"))
 
 # -- F2) Rushing (QB rush contribution + RB) ----------------------------------
 rushing_base <- raw_all |>
@@ -256,8 +263,41 @@ receiving_features <- receiving_base |>
   left_join(rec_yoy, by = c("name_norm", "college_norm"))
 
 # -- F4) Defensive (DL, LB, CB, S) -------------------------------------------
-defensive_base <- raw_all |>
-  filter(!is.na(defensive_tot), defensive_tot > 0) |>
+# Merge cfbfastR (2016+) with SR supplemental (2002–2015) before aggregating.
+# SR supplemental produced by 01d_scrape_cfb_defense.R — run that first.
+# If the file is absent, falls back to cfbfastR-only (2016+ coverage).
+SR_DEFENSE_RDS <- "data/01d_cfb_defense_supplemental.rds"
+SR_DEFENSE_CSV <- "data/01d_cfb_defense_supplemental.csv"
+
+# Accept either RDS (R scraper) or CSV (Python cloudscraper).
+# CSV is converted to RDS on first load so subsequent runs are fast.
+sr_defense <- if (file.exists(SR_DEFENSE_RDS)) {
+  read_rds(SR_DEFENSE_RDS)
+} else if (file.exists(SR_DEFENSE_CSV)) {
+  cli::cli_alert_info("Converting SR supplemental CSV → RDS for future runs")
+  d <- read_csv(SR_DEFENSE_CSV, show_col_types = FALSE)
+  write_rds(d, SR_DEFENSE_RDS)
+  d
+} else {
+  NULL
+}
+
+defensive_pool <- if (!is.null(sr_defense)) {
+  cli::cli_alert_info(
+    "SR supplemental loaded: {nrow(sr_defense)} player-seasons ({min(sr_defense$season)}–{max(sr_defense$season)})"
+  )
+  bind_rows(
+    raw_all    |> filter(!is.na(defensive_tot), defensive_tot > 0),
+    sr_defense |> filter(!is.na(defensive_tot), defensive_tot > 0)
+  )
+} else {
+  cli::cli_alert_warning(
+    "SR supplemental not found — defensive coverage limited to 2016+. Run 01d_scrape_cfb_defense.py first."
+  )
+  raw_all |> filter(!is.na(defensive_tot), defensive_tot > 0)
+}
+
+defensive_base <- defensive_pool |>
   group_by(name_norm, college_norm) |>
   slice_max(order_by = season, n = 2, with_ties = FALSE) |>
   summarise(
@@ -271,8 +311,7 @@ defensive_base <- raw_all |>
   filter(def_tot > 0)
 
 # YOY trajectory: per-season total tackles
-def_yoy <- raw_all |>
-  filter(!is.na(defensive_tot), defensive_tot > 0) |>
+def_yoy <- defensive_pool |>
   extract_yoy_stat(defensive_tot, "def_tot")
 
 defensive_features <- defensive_base |>

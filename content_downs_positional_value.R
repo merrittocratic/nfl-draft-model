@@ -89,25 +89,10 @@ article_table <- pos_table |>
     palette = c("#d73027", "#fee08b", "#1a9850"),
     domain  = c(-0.3, 0.3)
   ) |>
-  data_color(
-    columns = bust_rate,
-    palette = c("#1a9850", "#fee08b", "#d73027"),
-    domain  = c(0, 0.5)
-  ) |>
-  # Bold the S row — Caleb Downs' position group
+  # S row: blue background + bold — the "safe" pick story (Caleb Downs)
   tab_style(
-    style     = cell_text(weight = "bold"),
+    style     = list(cell_fill(color = "#e8f4fd"), cell_text(weight = "bold")),
     locations = cells_body(rows = pos_group == "S")
-  ) |>
-  # Subtle highlight on CB — the risk/reward counterpoint
-  tab_style(
-    style     = cell_fill(color = "#fff3f3"),
-    locations = cells_body(rows = pos_group == "CB")
-  ) |>
-  # Subtle highlight on RB — the cautionary counterpoint
-  tab_style(
-    style     = cell_fill(color = "#fff3f3"),
-    locations = cells_body(rows = pos_group == "RB")
   ) |>
   tab_source_note(
     source_note = md(
@@ -121,6 +106,10 @@ article_table <- pos_table |>
   tab_footnote(
     footnote  = "Boom rate minus bust rate. Higher = safer investment.",
     locations = cells_column_labels(columns = boom_bust_diff)
+  ) |>
+  tab_footnote(
+    footnote  = "Raw average; not adjusted for draft position. QBs drafted earlier accumulate more AV by opportunity.",
+    locations = cells_column_labels(columns = avg_4yr_av)
   ) |>
   tab_options(
     heading.title.font.size        = px(18),

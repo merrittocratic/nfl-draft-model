@@ -369,3 +369,31 @@ From CLAUDE.md TODO #8:
 1. **Mock picks source:** Build manually from consensus mocks (Jeremiah, Kiper, McShay + 2), or build a pick projection layer? (From memory: consensus from 5 analysts)
 2. **Conference mapping:** Hand-build lookup from cfbfastR, or use a static CSV? Needs realignment handling (Texas → SEC 2024, etc.). Currently a placeholder in 02.
 3. **TabPFN R API:** Session 1 confirmed TabPFN 7.0.0 installed in `nfl-tabpfn` Python virtualenv. Need to verify `tab_pfn()` function name and predict API in `04_train_evaluate.R` matches actual reticulate-backed interface.
+
+---
+
+## Pinned Investigation: TabPFN Combined-Position Run
+
+**Status:** Pinned — investigate after per-group models complete
+
+**Hypothesis:** TabPFN's zero-shot foundation model may benefit disproportionately from
+a larger training sample. The 8-group sub-model architecture constrains each group to
+300–600 rows; a combined-position run would give TabPFN ~3,400 rows. XGBoost and TabNet
+are already tuned to work well at small-n, but TabPFN's in-context learning may scale
+differently.
+
+**Proposed approach:**
+- Run TabPFN on all positions combined (single model, no group splits) as a **4th one-off
+  run** — not a replacement for the 8-group architecture
+- Use the same CV folds (restructured to span all groups) and same outcome metric
+  (`av_residual_z`) for comparability
+- Key design question: feature masking — position-inappropriate stats will be NA for most
+  rows; confirm TabPFN handles this gracefully vs. needing a reduced feature set
+- Compare RMSE/MAE against the per-group TabPFN weighted average (not per-group individually)
+
+**Content angle:** "Does TabPFN get smarter with more data?" — if combined TabPFN beats
+per-group TabPFN, that's a finding about foundation model scaling on small tabular datasets.
+If it doesn't, that validates the sub-model architecture choice.
+
+**Do not build until:** all 8 per-group models complete and `output/model_comparison.csv`
+is populated.

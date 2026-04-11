@@ -15,7 +15,12 @@ library(doFuture)  # parallel CV folds for XGBoost
 # MPS disabled — tabnet nn_module operations are not fully compatible with
 # Apple MPS backend; all TabNet training runs on CPU
 # Revisit after tabnet/torch MPS support matures
-cli::cli_alert_info("TabNet running on CPU (MPS disabled — compatibility issue)")
+
+# RUN_TABNET: set FALSE for fast iteration runs (~2-4 hrs vs 12-14 hrs).
+# TabNet currently underperforms null model (RMSE > 1.0) on all groups and
+# runs single-threaded on CPU — not worth the cost during feature iteration.
+# Set TRUE for final pre-draft run to complete the three-way comparison.
+RUN_TABNET <- FALSE
 
 # Parallel backend for XGBoost CV (CPU-based, safe to parallelize)
 # Note: NOT applied to TabNet — torch + multiprocess forks crash on Mac
@@ -127,30 +132,35 @@ for (group_name in names(model_groups)) {
   cli::cli_alert_info("TabPFN RMSE: {if (is.na(tabpfn_rmse)) 'failed' else round(tabpfn_rmse, 2)}")
 
   # -----------------------------------------------------------------------
-  # TabNet — tune with grid search
+  # TabNet — tune with grid search (skipped when RUN_TABNET = FALSE)
   # -----------------------------------------------------------------------
-  cli::cli_alert_info("Tuning TabNet...")
+  if (RUN_TABNET) {
+    cli::cli_alert_info("Tuning TabNet...")
 
-  tabnet_wf <- workflow() |>
-    add_recipe(make_tabnet_recipe(group_data)) |>  # imputes college pctile NAs for TabNet
-    add_model(tabnet_spec)
+    tabnet_wf <- workflow() |>
+      add_recipe(make_tabnet_recipe(group_data)) |>
+      add_model(tabnet_spec)
 
-  tabnet_tuned <- tune_grid(
-    tabnet_wf,
-    resamples = folds,
-    grid      = tabnet_grid,
-    metrics   = draft_metrics,
-    control   = control_grid(save_pred = TRUE, allow_par = FALSE)  # torch crashes in parallel workers
-  )
+    tabnet_tuned <- tune_grid(
+      tabnet_wf,
+      resamples = folds,
+      grid      = tabnet_grid,
+      metrics   = draft_metrics,
+      control   = control_grid(save_pred = TRUE, allow_par = FALSE)
+    )
 
-  tabnet_best_rmse <- tryCatch({
-    show_best(tabnet_tuned, metric = "rmse", n = 1)
-  }, error = function(e) {
-    cli::cli_alert_warning("TabNet tuning failed: {conditionMessage(e)}")
-    cli::cli_alert_info("Run show_notes(.Last.tune.result) for details")
-    tibble(mean = NA_real_)
-  })
-  cli::cli_alert_info("TabNet best RMSE: {if (is.na(tabnet_best_rmse$mean)) 'failed' else round(tabnet_best_rmse$mean, 2)}")
+    tabnet_best_rmse <- tryCatch({
+      show_best(tabnet_tuned, metric = "rmse", n = 1)
+    }, error = function(e) {
+      cli::cli_alert_warning("TabNet tuning failed: {conditionMessage(e)}")
+      cli::cli_alert_info("Run show_notes(.Last.tune.result) for details")
+      tibble(mean = NA_real_)
+    })
+    cli::cli_alert_info("TabNet best RMSE: {if (is.na(tabnet_best_rmse$mean)) 'failed' else round(tabnet_best_rmse$mean, 2)}")
+  } else {
+    cli::cli_alert_info("TabNet skipped (RUN_TABNET = FALSE)")
+    tabnet_best_rmse <- tibble(mean = NA_real_)
+  }
 
   # -----------------------------------------------------------------------
   # Select winner across all three (comparison) and best deployable (XGB/TabNet)

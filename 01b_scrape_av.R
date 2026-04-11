@@ -134,13 +134,61 @@ pfr_team_features <- pfr_season |>
     .groups = "drop"
   )
 
+# ============================================================================
+# YEAR-2 DEPARTURE FLAG
+#
+# Compares drafting team to year-2 team at the player-season level.
+# Captures organizational dysfunction: drafting a player and giving up within
+# 2 years signals evaluation/development failure regardless of player quality.
+#
+# Franchise relocation map: teams that moved during the training window.
+# A player staying with the same franchise across a relocation is NOT a departure.
+# ============================================================================
+
+franchise_moves <- tribble(
+  ~old_team, ~new_team,
+  "STL",     "LAR",   # Rams: St. Louis → LA (2016)
+  "SDG",     "LAC",   # Chargers: San Diego → LA (2017)
+  "OAK",     "LVR"    # Raiders: Oakland → Las Vegas (2020)
+)
+
+normalize_franchise <- function(team_vec) {
+  franchise_moves |>
+    right_join(tibble(team = team_vec), by = c("new_team" = "team")) |>
+    mutate(normalized = coalesce(old_team, new_team)) |>
+    pull(normalized)
+}
+
+# Get year-2 team for each player (season = draft_year + 1)
+# Multi-team seasons in year 2 (traded mid-year): take the team with more games
+pfr_yr2 <- pfr_clean |>
+  filter(season == draft_year + 1) |>
+  group_by(pfr_id, draft_year) |>
+  slice_max(order_by = as.numeric(games), n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  select(pfr_id, draft_year, draft_team, team_yr2 = team) |>
+  mutate(
+    # Normalize both sides to pre-move abbreviation for apples-to-apples compare
+    draft_team_norm = normalize_franchise(draft_team),
+    team_yr2_norm   = normalize_franchise(team_yr2),
+    left_drafter_yr2 = draft_team_norm != team_yr2_norm
+  ) |>
+  select(pfr_id, draft_year, draft_team, team_yr2, left_drafter_yr2)
+
+cli::cli_alert_info(
+  "Year-2 departure: {sum(pfr_yr2$left_drafter_yr2, na.rm=TRUE)} of {nrow(pfr_yr2)} players left drafting team by year 2 ({round(mean(pfr_yr2$left_drafter_yr2, na.rm=TRUE)*100,1)}%)"
+)
+
 # Join and compute totals
 av_4yr <- pfr_wide |>
   left_join(pfr_team_features, by = c("pfr_id", "draft_year")) |>
+  left_join(pfr_yr2, by = c("pfr_id", "draft_year")) |>
   mutate(
     av_4yr_total = rowSums(across(matches("^av_yr[0-9]+")), na.rm = TRUE),
     seasons_active_4yr = replace_na(seasons_active_4yr, 0),
     n_teams_4yr        = replace_na(n_teams_4yr, 0)
+    # left_drafter_yr2: NA = player didn't appear in year-2 data (injured, cut in yr1, etc.)
+    # Treat NA as "left" for team feature computation — team couldn't develop them regardless
   )
 
 cli::cli_alert_success(
