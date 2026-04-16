@@ -61,6 +61,16 @@ make_recipe <- local({
       # XGBoost uses these alongside the era flags to distinguish "unknown" from
       # "no production." Must precede step_impute_* on college features.
       step_indicate_na(any_of(.college_pctile_features)) |>
+      # Handle _src and conf_tier BEFORE step_impute_bag: these columns are used
+      # as predictors by the bagged trees. If assessment fold has a level unseen
+      # in the training fold (e.g., QB cone_src = "pro_day" when no QB in that
+      # fold did a pro day), the trees error on the new factor level. Sanitizing
+      # here ensures step_impute_bag always sees only known levels.
+      step_novel(conf_tier, forty_src, bench_src, vertical_src,
+                 broad_jump_src, cone_src, shuttle_src) |>
+      step_unknown(conf_tier, forty_src, bench_src, vertical_src,
+                   broad_jump_src, cone_src, shuttle_src,
+                   new_level = "unknown") |>
       step_impute_bag(
         all_of(.combine_features),
         trees    = 25,
@@ -80,11 +90,6 @@ make_recipe <- local({
         pass_coverage_era = as.integer(pass_coverage_era),
         def_coverage_era  = as.integer(def_coverage_era)
       ) |>
-      step_unknown(conf_tier, forty_src, bench_src, vertical_src,
-                   broad_jump_src, cone_src, shuttle_src,
-                   new_level = "unknown") |>
-      step_novel(conf_tier, forty_src, bench_src, vertical_src,
-                 broad_jump_src, cone_src, shuttle_src) |>
       step_dummy(position_in_group, conf_tier,
                  forty_src, bench_src, vertical_src,
                  broad_jump_src, cone_src, shuttle_src) |>
@@ -147,14 +152,24 @@ rf_spec <- rand_forest(
 # Requires: library(tabnet); library(torch)
 # TabNet plugs directly into tidymodels workflow
 tabnet_spec <- tabnet(
-  epochs          = tune(),
-  batch_size      = 128L,
-  decision_width  = tune(),
-  attention_width = tune(),
-  num_steps       = tune(),
-  penalty         = 0.000001,
-  learn_rate      = tune(),
-  momentum        = 0.6
+  # epochs fixed at 200 as upper bound; early stopping will trigger well before
+  # this for converged runs. Removing epochs from tuning halves grid combinations
+  # and eliminates the "train to 200 no matter what" waste.
+  epochs                   = 200L,
+  batch_size               = 64L,    # reduced from 128 — CB (n=162) had <128 rows
+                                      # per training fold after valid_split; 64 fits safely
+  decision_width           = tune(),
+  attention_width          = tune(),
+  num_steps                = tune(),
+  penalty                  = 0.000001,
+  learn_rate               = tune(),
+  momentum                 = 0.6,
+  # Early stopping: halt if valid_loss doesn't improve by 1e-4 for 15 epochs.
+  # In practice fires at ~30-80 epochs instead of always running 200.
+  # Expected speedup: 3-5x per run.
+  early_stopping_monitor   = "valid_loss",
+  early_stopping_patience  = 15L,
+  early_stopping_tolerance = 1e-4
 ) |>
   set_engine("torch") |>
   set_mode("regression")
@@ -180,13 +195,15 @@ rf_grid <- grid_space_filling(
   size = 20
 )
 
+# epochs removed from grid — now fixed with early stopping in tabnet_spec.
+# Grid reduced from 30 to 15: combined with early stopping, total training
+# work drops ~6x vs. original (30 pts × 200 epochs → 15 pts × ~50 epochs avg).
 tabnet_grid <- grid_space_filling(
-  epochs(range = c(50L, 200L)),
   decision_width(range = c(8L, 64L)),
   attention_width(range = c(8L, 64L)),
   num_steps(range = c(3L, 7L)),
   learn_rate(range = c(-3, -1.5)),
-  size = 30
+  size = 15
 )
 
 # ============================================================================

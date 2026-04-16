@@ -16,10 +16,12 @@ library(doFuture)  # parallel CV folds for XGBoost
 # Apple MPS backend; all TabNet training runs on CPU
 # Revisit after tabnet/torch MPS support matures
 
-# RUN_TABNET: set FALSE for fast iteration runs (~2-4 hrs vs 12-14 hrs).
-# TabNet currently underperforms null model (RMSE > 1.0) on all groups and
-# runs single-threaded on CPU — not worth the cost during feature iteration.
-# Set TRUE for final pre-draft run to complete the three-way comparison.
+# TabNet result (2026-04-14, full overnight run with early stopping + grid=15):
+# RMSE ranged 1.36–2.08 across all 8 groups — worse than null model (1.0) on every group.
+# XGBoost wins all 8. TabNet is not competitive on this dataset at these sample sizes.
+# Root causes: small n (162–600/group), high NA rate in college features, attention
+# mechanism ill-suited to sparse tabular data with many structural zeros.
+# Keeping FALSE permanently. Re-evaluate only if n or feature density increases substantially.
 RUN_TABNET <- FALSE
 
 # Parallel backend for XGBoost CV (CPU-based, safe to parallelize)
@@ -211,9 +213,10 @@ for (group_name in names(model_groups)) {
 
   best_models[[group_name]] <- final_fit
 
-  # Checkpoint — write after each group so a mid-run crash doesn't lose everything
-  write_rds(results,     "data/04_checkpoint_results.rds")
-  write_rds(best_models, "data/04_checkpoint_best_models.rds")
+  # Checkpoint — write after each group so a mid-run crash doesn't lose everything.
+  # bundle() re-serializes XGBoost's C++ pointer so models survive across R sessions.
+  write_rds(results,                          "data/04_checkpoint_results.rds")
+  write_rds(map(best_models, bundle::bundle), "data/04_checkpoint_best_models.rds")
   cli::cli_alert_success("{group_name} complete — checkpoint saved")
 }
 
@@ -322,8 +325,8 @@ boom_bust_preds |>
 # ============================================================================
 # F) SAVE EVERYTHING
 # ============================================================================
-write_rds(results, "data/04_tuning_results.rds")
-write_rds(best_models, "data/04_best_models.rds")
+write_rds(results,                         "data/04_tuning_results.rds")
+write_rds(map(best_models, bundle::bundle), "data/04_best_models.rds")
 
 cli::cli_alert_success("All models trained and saved")
 cli::cli_alert_info("Next: Run R/05_predict_2026.R to score this year's class")

@@ -19,6 +19,9 @@ output/*.csv
 output/figures/*.png
 output/figures/*.jpg
 output/figures/*.svg
+output/figures/**/*.png
+output/figures/**/*.jpg
+output/figures/**/*.svg
 
 # PFR download artifacts
 sportsref_download*

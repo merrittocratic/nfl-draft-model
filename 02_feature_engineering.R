@@ -584,7 +584,7 @@ shared_features <- c(
   "college_years", "is_underclassman", "is_te",
   # Combine measurables
   combine_features,
-  "athleticism_composite", "n_combine_tests",
+  "n_combine_tests",
   # Program pipeline
   "prog_pos_n", "prog_pos_av_mean", "prog_pos_av_median",
   "prog_pos_boom_rate", "prog_pos_bust_rate", "prog_pos_avg_pick",
@@ -604,6 +604,11 @@ shared_features <- c(
   "team_pos_n", "team_pos_resid_mean", "team_pos_boom_rate", "team_pos_bust_rate",
   "team_pos_retention_2yr", "team_all_n", "team_all_resid_mean",
   "team_all_boom_rate", "team_all_retention_2yr",
+  # Speed Score (Bill Barnwell) and BMI — position-group percentile ranks.
+  # speed_score = (wt * 200) / forty^4: rewards big-and-fast; distinguishes
+  # a 4.36 at 212 lbs (elite) from a 4.36 at 180 lbs (merely fast).
+  # bmi_pctile captures size-relative-to-position; complements raw wt.
+  "speed_score_pctile", "bmi_pctile",
   # Pro day source indicators — lets model learn whether combine vs. pro day matters
   # Values: "combine", "pro_day", "missing"
   "forty_src", "bench_src", "vertical_src", "broad_jump_src", "cone_src", "shuttle_src",

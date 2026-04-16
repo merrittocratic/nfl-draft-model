@@ -124,6 +124,7 @@ normalize_name <- function(x) {
 
 normalize_college <- function(x) {
   x |>
+    canonicalize_college() |>   # expand nflreadr abbreviations before lowercasing
     str_to_lower() |>
     str_remove_all("\\.") |>
     str_squish()
@@ -341,10 +342,15 @@ domination_features <- tryCatch({
   )
 
   team_norm <- team_raw |>
-    mutate(college_norm = normalize_college(school)) |>
-    # Handle potential API version differences in column naming
+    mutate(college_norm = normalize_college(team)) |>
+    # Handle cfbfastR API column naming variants across versions:
+    #   net_pass_yds → passing_yds, pass_atts → passing_att
+    #   rush_atts → rushing_car, rush_yds → rushing_yds
     rename_with(~ str_replace(., "^pass_", "passing_"), starts_with("pass_")) |>
     rename_with(~ str_replace(., "^rush_", "rushing_"), starts_with("rush_")) |>
+    rename(any_of(c(passing_yds = "net_pass_yds",
+                    passing_att = "passing_atts",
+                    rushing_car = "rushing_atts"))) |>
     select(season, college_norm, any_of(c(
       "passing_yds", "rushing_yds", "passing_att", "rushing_car"
     )))
@@ -386,6 +392,44 @@ domination_features <- tryCatch({
   cli::cli_alert_warning("Domination features skipped: {conditionMessage(e)}")
   NULL
 })
+
+# ============================================================================
+# Export per-player rate stats for 2026 prospect scoring (05_predict_2026.R).
+# Keyed by (name_norm, college_norm) — no draft record needed for 2026 prospects.
+# Run 01c before 05 to keep this file fresh.
+# ============================================================================
+conf_tier_all <- raw_all |>
+  group_by(name_norm, college_norm) |>
+  slice_max(order_by = season, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  select(name_norm, college_norm, conf_tier)
+
+player_stats_base <- passing_features |>
+  full_join(rushing_features,   by = c("name_norm", "college_norm")) |>
+  full_join(receiving_features, by = c("name_norm", "college_norm")) |>
+  full_join(defensive_features, by = c("name_norm", "college_norm")) |>
+  full_join(int_features,       by = c("name_norm", "college_norm")) |>
+  # conf_tier from passing_features covers QBs only; conf_tier_all covers everyone
+  left_join(conf_tier_all, by = c("name_norm", "college_norm")) |>
+  mutate(conf_tier = coalesce(conf_tier.y, conf_tier.x)) |>
+  select(-conf_tier.x, -conf_tier.y)
+
+if (!is.null(domination_features)) {
+  player_stats_base <- player_stats_base |>
+    full_join(domination_features, by = c("name_norm", "college_norm"))
+} else {
+  player_stats_base <- player_stats_base |>
+    mutate(
+      rec_yds_share   = NA_real_,
+      rush_yds_share  = NA_real_,
+      qb_yds_per_play = NA_real_
+    )
+}
+
+write_rds(player_stats_base, "data/01c_player_stats_base.rds")
+cli::cli_alert_success(
+  "Player stats base exported: {nrow(player_stats_base)} players → data/01c_player_stats_base.rds"
+)
 
 # ============================================================================
 # G) JOIN TO DRAFT PROSPECTS

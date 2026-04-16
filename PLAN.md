@@ -185,24 +185,105 @@
   `01c` re-run to regenerate with new columns
 - [x] `02` → `03` → `04` kicked off (04 running overnight)
 
-**Next session starts here:**
-1. **Check `04` results** — review RMSE table across all 8 groups; note any regressions vs. Session 7
-2. **Build `05_predict_2026.R`** — this is the priority
-   - Mock data in hand: `data/combined_board_mock_20260405.csv` (MDDB consensus big board + R1 mock)
-   - Two-tier pick assignment: `mocked_r1` → use `mock_pick`; `best_available` in top 32 → use
-     `big_board_rank` as pick estimate with wide uncertainty window (±10)
-   - Note: MDDB uniqueness constraint obscures vote-splitters (see building in public log 2026-04-05)
-   - 2026 combine data: `nflreadr::load_combine(seasons = 2026)` — verify coverage
-   - Pro day src columns need to be populated for 2026 prospects (most will be "missing" or "combine")
-3. **Variable importance plots** — quick win post-scoring; shows which features drive each group
+### Session 9 — 2026-04-12
+**Completed:**
+- [x] Fixed `step_novel`/`step_unknown` ordering bug — `_src` columns must be sanitized before
+  `step_impute_bag` (bagged trees errored on unseen factor levels in CV assessment folds)
+- [x] **04 results reviewed** — per-group RMSE baseline established:
+
+| Group | XGBoost | TabPFN | vs. Session 7 |
+|-------|---------|--------|---------------|
+| cb    | 0.959   | 1.010  | —             |
+| qb    | 0.948   | 1.030  | ▲ (was 0.956) |
+| dl    | 0.984   | 0.998  | —             |
+| wr_te | 0.989   | 0.999  | —             |
+| s     | 0.991   | 1.000  | —             |
+| lb    | 0.995   | 1.010  | —             |
+| ol    | 0.998   | 1.000  | ≈ (was 0.997) |
+| rb    | 1.000   | 1.020  | null model    |
+
+- [x] **`05_predict_2026.R` built and running** — full scoring pipeline:
+  - Mock board + combine join; pick_est = mock_pick or big_board_rank
+  - Boom/bust probabilities from regression output + CV RMSE uncertainty
+  - SHAP values via `shapviz` (waterfall per R1/R2 player, beeswarm per group)
+  - Player cards to `output/2026_player_cards.csv`
+
+---
+
+### Session 10 — 2026-04-13
+**Completed:**
+- [x] **College stats wired into `05_predict_2026.R`** (Section C2):
+  - `01c_load_college_stats.R` now exports `data/01c_player_stats_base.rds` (per-player rate stats,
+    no draft record needed — keyed by name_norm + college_norm)
+  - `05` fuzzy-matches 2026 prospects to stats by name + college, computes within-2026-cohort
+    percentile ranks by model_group (same within-(season × group) scheme as training)
+  - YOY trajectory features computed and ranked
+  - WR/TE rec_* and rush_* re-ranked within (model_group, position) — same split as training
+- [x] **Fixed domination features in `01c`**: `school` → `team` column name; added `rename(any_of(...))`
+  to handle cfbfastR API column name variants (`net_pass_yds`, `pass_atts`, `rush_atts`)
+- [x] **Speed Score added to model**:
+  - `speed_score_pctile` and `bmi_pctile` added to `shared_features` in `02_feature_engineering.R`
+    (were computed but not fed into model)
+  - B3b section added to `05` to compute speed_score and bmi for 2026 prospects
+  - Fixes J. Love athleticism SHAP — model now distinguishes 4.36/212 lbs from 4.36/180 lbs
+- [x] **Fixed missing non-combine prospects** (Caleb Downs, Sonny Styles):
+  - Section A4 added to `05` — pulls all mock board players not in combine data, adds with NA
+    measurables (model handles natively)
+  - Top-64 audit check added: warns if any top-64 mock players still missing after A4
+- [x] **College name canonicalization** (`canonicalize_college()` in `00_config.R`):
+  - nflreadr abbreviates "Ohio St.", "Penn St." etc.; cfbfastR and mock board use full names
+  - Regex-based `canonicalize_college()` expands all "X St." → "X State" patterns + named exceptions
+  - Applied in: `normalize_college()` in `01c`, `normalize_college_local` in `05` C2,
+    `school` column in A1 of `05`, `draft_fe$college` at top of `05`
+  - Fixes program pipeline lookup (was silently failing for mock-only players at "Ohio State" schools)
+  - Fixes college stats join (was "ohio st" ≠ "ohio state" for combine players)
+- [x] **`feature_dictionary.md`** created — full feature reference with descriptions, all 50+ features
+- [x] **`RUN_TABNET <- TRUE`** — overnight run kicked off: `02` → `03` → `04` (XGB + TabPFN + TabNet)
+  → `05`. Expected completion: tomorrow morning (~14-16 hrs).
+
+### Session 11 — 2026-04-14
+**Completed:**
+- [x] **Removed `athleticism_composite` from `shared_features`** — low Gain for all groups except RB,
+  where it dominated non-intuitively negative (composite is collinear with raw events already in model;
+  "elite composite + top RB pick = disappoints" artifact). Re-ran `02` → `03` → `04` → `05`.
+  Love's SHAP waterfall now clean: bench/speed_score/wt driving positive, no composite distortion.
+- [x] **Three-way model comparison finalized:**
+  - XGBoost wins all 8 groups (RMSE 0.951–1.000)
+  - TabPFN beats null on dl/wr_te only; fails on 6 of 8
+  - TabNet all NA — permanently disabled (`RUN_TABNET <- FALSE`)
+- [x] **SHAP waterfall analysis** — reviewed Love (RB), Lemon (WR), Bailey vs. Reese (DL), Styles (LB)
+- [x] **Fixed Sonny Styles / Alex Styles nickname bug:**
+  - nflreadr stores legal name "Alex Styles"; mock board uses "Sonny Styles"
+  - Combined join failed → added as mock-only with all-NA combine measurables
+  - College stats join also failed → def_tot_pctile = NA (his biggest driver)
+  - Fix: `name_aliases` applied to `mock_raw` in A2 (before combine-mock join)
+  - `college_stats_name_overrides` (inverse of aliases) applied in C2 name normalization
+  - Display name restored to "Sonny Styles" before `player_cards` output
+  - Predicted z: NA-version +0.09 → incomplete +0.01 → correct +0.13
+- [x] **Fact-checked front seven article claims against actual data:**
+  - First-round LB bust rate is 32.6% (not 11% as drafted — that was the all-rounds rate misapplied)
+  - First-round EDGE: 18.3% boom / 29.6% bust (-11.3%)
+  - First-round IDL: 26.1% boom / 15.2% bust (+10.9%) — strongest position in front seven
+  - All-rounds LB: 14.6% boom / 10.7% bust — the "11%" was this number, wrong context
+- [x] **EDGE sack specialist scatter plot:** `content_front_seven_scatter.R` created
+  - Finding: no booms with sacks pctile < 0.50; elite sacks necessary but not sufficient
+  - Real insight: position is volatile regardless of production profile (30% bust rate persists
+    even among elite-production EDGE prospects)
+- [x] **Roadmap updated:** nickname crosswalk added as quick win; cfb_player_id as architectural fix
+
+**Next session starts here (draft night April 24):**
+1. **Re-run `05_predict_2026.R`** with actual picks and actual drafting teams
+2. **Update team dev features** — `team_pos_bust_rate`, `team_all_resid_mean` etc. are NA for 2026;
+   after picks are known, these resolve from training data by drafting team
+3. **Verify all top picks present** — run top-64 audit check from console
 
 ---
 
 ## Context
-The 2026 NFL Draft is April 24–26, 2026 (13 days away). Pipeline is complete and running.
-`04_train_evaluate.R` is running overnight (Session 8). Tomorrow's priority is `05_predict_2026.R`.
+The 2026 NFL Draft is April 24–26, 2026 (10 days away). Pipeline is complete and scoring.
+`RUN_TABNET <- FALSE` permanently. XGBoost is the deployment model for all 8 groups.
 
-Key gaps blocking a working model:
+Key gaps resolved:
 1. ~~Environment not validated~~ — **RESOLVED**
 2. ~~`career_av` proxy~~ — **RESOLVED**: true 4-year AV via PFR CSV exports
 3. ~~Column name mismatches~~ — **RESOLVED**
@@ -210,8 +291,11 @@ Key gaps blocking a working model:
 5. ~~`ht` stored as string~~ — **RESOLVED**
 6. ~~PFR CSV collection~~ — **RESOLVED**: 60 CSVs, `01b_av_4yr.rds` generated
 7. ~~Pro day data missing~~ — **RESOLVED**: MockDraftable API, src indicators in model
-8. **Conference mapping** — still a placeholder; low priority given time constraint
-9. **2026 scoring** — `05_predict_2026.R` not yet built; mock data in hand
+8. ~~2026 scoring~~ — **RESOLVED**: `05_predict_2026.R` complete
+9. ~~College stats not wired into 05~~ — **RESOLVED**: Session 10
+10. ~~Missing non-combine prospects~~ — **RESOLVED**: A4 mock-board backfill
+11. ~~College name mismatch (Ohio St. vs Ohio State)~~ — **RESOLVED**: `canonicalize_college()`
+12. **Conference mapping** — still a placeholder; low priority given time constraint
 
 ---
 
@@ -358,26 +442,29 @@ Implementation:
 | 1 | Phase 1: Environment setup | ✅ Done | — |
 | 2 | Phase 2a–2b: Data load + fuzzy join | ✅ Done | — |
 | 3 | Phase 2c: 01b PFR CSV ingestion | ✅ Done | — |
-| 4 | Phase 3: Feature engineering | ✅ Done — college stats, YOY, domination, pro day src, team dev | — |
-| 5 | Phase 4: Model training | 🔄 Running — 04 kicked off Session 8, results tomorrow | — |
-| 6 | Phase 6: Pro day integration | ✅ Done — MockDraftable API, src indicator features in model | — |
-| 7 | Phase 5: 2026 scoring (05) | ⏳ Tomorrow — first priority | Needs 04 results |
-| 8 | Phase 7a: Variable importance plots | ⏳ After scoring | No |
-| 9 | Calibration check | ⏳ After scoring | No |
-| 10 | Conference mapping | ⏳ Low priority — placeholder acceptable for launch | No |
+| 4 | Phase 3: Feature engineering | ✅ Done — college stats, YOY, domination, pro day src, team dev, speed score | — |
+| 5 | Phase 6: Pro day integration | ✅ Done — MockDraftable API, src indicator features in model | — |
+| 6 | Phase 5: 2026 scoring (05) | ✅ Done — player cards, SHAP, boom/bust probs | — |
+| 7 | Phase 4: Model training | ✅ Done — XGB wins all 8; TabNet permanently disabled; TabPFN comparison complete | — |
+| 8 | Phase 7a: Variable importance plots | ⏳ Post-draft — `output/variable_importance.csv` generated | No |
+| 9 | Calibration check | ⏳ Post-draft | No |
+| 10 | Conference mapping | ⏳ 2027 offseason — placeholder acceptable | No |
+| 11 | Draft night re-run | ⏳ April 24 — re-run 05 with actual picks + actual drafting teams | No |
 
 ---
 
 ## Critical Files
-- `00_config.R` — ✅ clean, 8 model groups, RMSE thresholds at 0.999
+- `00_config.R` — ✅ 8 model groups, RMSE thresholds, `canonicalize_college()` helper
 - `01_load_data.R` — ✅ real 4yr AV, DB resolution, pro day hybrid coalesce + src columns
 - `01b_scrape_av.R` — ✅ `data/01b_av_4yr.rds` (3,432 players)
-- `01c_load_college_stats.R` — ✅ passing/rushing/receiving/defensive stats + team domination + YOY
+- `01c_load_college_stats.R` — ✅ stats 2002–2025; exports `01c_player_stats_base.rds` for 05
 - `01e_scrape_pro_day.R` — ✅ MockDraftable API, `data/01e_pro_day.rds` (cached)
-- `02_feature_engineering.R` — ✅ all features including pro day src, college pctiles, YOY, team dev
-- `03_model_spec.R` — ✅ XGBoost + TabPFN; TabNet disabled (RUN_TABNET=FALSE)
-- `04_train_evaluate.R` — 🔄 running overnight
-- `05_predict_2026.R` — ⏳ not yet built; tomorrow's priority
+- `02_feature_engineering.R` — ✅ all features: college pctiles, YOY, domination, team dev, speed_score_pctile, bmi_pctile
+- `03_model_spec.R` — ✅ XGBoost + TabPFN + TabNet specs; updated shared_features
+- `04_train_evaluate.R` — ✅ complete; RUN_TABNET=FALSE permanently; XGB wins all 8
+- `05_predict_2026.R` — ✅ complete: combine + mock backfill, college stats C2, SHAP, player cards, Styles alias fix
+- `content_front_seven_scatter.R` — ✅ EDGE sack specialist vs. broad disruptor scatter
+- `feature_dictionary.md` — ✅ full feature reference (50+ features)
 
 ---
 

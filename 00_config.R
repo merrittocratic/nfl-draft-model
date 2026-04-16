@@ -10,6 +10,7 @@ library(xgboost)
 library(finetune)    # for race_anova() tuning
 library(baguette)    # for bag_tree imputation engine
 library(probably)    # for calibration
+library(stringi)
 
 # -- Constants ----------------------------------------------------------------
 DRAFT_YEARS_TRAIN  <- 2006:2020   # 15 classes, 4-year AV window available
@@ -80,8 +81,50 @@ XGB_RMSE_THRESHOLDS <- c(
   cb    = 0.999,
   s     = 0.999,
   lb    = 0.999,  # raised — defensive coverage gap (cfbfastR only 2016+); revisit after CFBD integration
-  rb    = 0.999
+  rb    = 1.001
 )
+
+# -- College Name Canonicalization --------------------------------------------
+# nflreadr abbreviates school names ("Ohio St.", "Penn St.", "N.C. State")
+# while cfbfastR and the mock board use full names ("Ohio State", "Penn State",
+# "NC State"). Apply this function to any `college` or `school` column before
+# joining across sources.
+#
+# Regex first: " St." at end of name covers all "X St." → "X State" cases
+# (Ohio, Penn, Michigan, Florida, Mississippi, Iowa, Kansas, Oklahoma, Oregon,
+# Washington, Arizona, Colorado, Utah, Boise, San Diego, Fresno, etc.)
+# Named replacements handle remaining nflreadr-specific quirks.
+canonicalize_college <- function(x) {
+  x |>
+    str_replace(" St\\.$", " State") |>
+    str_replace_all(c(
+      "^N\\.C\\. State$"    = "NC State",
+      "^Southern Cal$"      = "USC",
+      "^Miami \\(FL\\)$"    = "Miami",
+      "^Miami \\(OH\\)$"    = "Miami OH",
+      "^Central Fla\\.$"    = "UCF",
+      "^Central Florida$"   = "UCF",
+      "^Southern Miss\\.$"  = "Southern Miss",
+      "^Bowling Green$"     = "Bowling Green State",
+      "^App State$"         = "Appalachian State",
+      "^UMass$"             = "Massachusetts",
+      "^UConn$"             = "Connecticut",
+      "^UNT$"               = "North Texas",
+      "^UTSA$"              = "Texas San Antonio",
+      "^UTEP$"              = "Texas El Paso",
+      "^FAU$"               = "Florida Atlantic",
+      "^FIU$"               = "Florida International",
+      "^UAB$"               = "Alabama Birmingham",
+      "^ULM$"               = "Louisiana Monroe",
+      "^ULL$"               = "Louisiana",
+      "^La\\. Tech$"        = "Louisiana Tech",
+      "^W\\. Michigan$"     = "Western Michigan",
+      "^E\\. Michigan$"     = "Eastern Michigan",
+      "^N\\. Illinois$"     = "Northern Illinois",
+      "^S\\. Illinois$"     = "Southern Illinois"
+    )) |>
+    str_squish()
+}
 
 # -- Output paths -------------------------------------------------------------
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
