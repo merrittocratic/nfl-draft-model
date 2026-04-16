@@ -273,9 +273,42 @@
 
 **Next session starts here (draft night April 24):**
 1. **Re-run `05_predict_2026.R`** with actual picks and actual drafting teams
-2. **Update team dev features** — `team_pos_bust_rate`, `team_all_resid_mean` etc. are NA for 2026;
-   after picks are known, these resolve from training data by drafting team
+2. **Update team dev features** — now computed automatically in B6 from `mock_team`;
+   resolves from training data by drafting team once actual teams are populated
 3. **Verify all top picks present** — run top-64 audit check from console
+
+### Draft Night CSV Workflow
+
+**The file:** `data/combined_board_mock_20260405.csv`
+
+**Do NOT edit in place.** Duplicate it and rename:
+```
+data/combined_board_actual_20260424.csv
+```
+Update the `read_csv` call at the top of `05_predict_2026.R` to point to the new file.
+This preserves the original mock snapshot for content (predicted vs. actual comparisons).
+
+**Only two columns need updating per pick:**
+| Column | What to enter |
+|--------|--------------|
+| `mock_pick` | Actual pick number as announced |
+| `mock_team` | Actual drafting team, full name (e.g. `"Las Vegas Raiders"`) |
+
+All other columns (`player`, `position`, `college`, `big_board_rank`, `status`,
+`confidence`) carry over unchanged from the mock file.
+
+**Team name format** — must match exactly (full name, no abbreviations):
+see `mock_team_to_pfr` lookup in `05_predict_2026.R` (B6 section) for the
+complete list of valid names.
+
+**Suggested cadence:**
+- After Round 1 (32 picks): update CSV, re-run `05`, generate player cards
+- After Round 2 (64 picks): update CSV, re-run `05`
+- After Rounds 3–7 (optional): update if content requires late-round cards
+
+**Trade picks:** If a trade moves a pick to a different team, update `mock_team`
+to the actual selecting team — the pipeline handles it correctly since B6 looks
+up the drafting team's development history from training data.
 
 ---
 
