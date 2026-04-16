@@ -35,8 +35,15 @@ edge_r1 <- draft_fe |>
   ) |>
   mutate(
     outcome_class = factor(outcome_class, levels = c("boom", "expected", "bust")),
-    label         = if_else(def_sacks_pctile < 0.5 & def_tot_pctile < 0.5 &
-                              outcome_class == "boom",
+    # Only Quinn is labeled — the sole confirmed legitimate 0/0 in the danger zone.
+    # Other 0/0 players are cfbfastR data artifacts (school/year coverage gaps):
+    #   Jordan (2011, Cal): 62.5 tackles + 5.5 sacks confirmed via PFR
+    #   Hughes (2010, TCU): 11.5 sacks confirmed via PFR
+    #   Coples (2012, UNC): 7.5 sacks confirmed via PFR
+    #   Harvey (2008, Florida): likely gap, unverified
+    # Quinn (2011, UNC): suspended senior year — legitimately zero stats
+    # Lawson (2016, Clemson): shoulder surgery, missed most of 2015 — likely legit
+    label         = if_else(pfr_player_name == "Robert Quinn",
                             pfr_player_name, NA_character_)
   )
 
