@@ -295,6 +295,12 @@ defensive_pool <- if (!is.null(sr_defense)) {
   cli::cli_alert_warning(
     "SR supplemental not found — defensive coverage limited to 2016+. Run 01d_scrape_cfb_defense.py first."
   )
+  # TODO (2027): raise floor from > 0 to >= 5 (or similar) to prevent
+  # spurious near-zero cfbfastR records from bad school/year coverage from
+  # polluting the join. Coples (2012, UNC) had def_tot=1 from a bad match
+  # — passed this filter, landed at 0/0 percentile instead of NA.
+  # The fix: defensive_tot >= 5 eliminates garbage records while keeping
+  # any legitimate low-tackle player (kickers/special teams don't reach here).
   raw_all |> filter(!is.na(defensive_tot), defensive_tot > 0)
 }
 
