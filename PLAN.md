@@ -271,6 +271,16 @@
     even among elite-production EDGE prospects)
 - [x] **Roadmap updated:** nickname crosswalk added as quick win; cfb_player_id as architectural fix
 
+### Session 13 — 2026-04-17 (Draft Eve)
+**Completed:**
+- [x] **DOB join wired into `05_predict_2026.R`** (Section B5b):
+  - Two sources combined into `data/DOB_26.csv`: dynastyleaguefootball.com (Firstname Lastname)
+    and establishtherun.com (Lastname, Firstname — quoted)
+  - Name normalization handles both formats; de-duped by std_name key
+  - Computes `draft_age`, `college_years`, `is_underclassman`, `draft_age_pctile_in_group`
+  - For next year: pull DOB from **dynastyleaguefootball.com** and **establishtherun.com**
+    early in the process — these two sources together cover most top-64 prospects
+
 **Next session starts here (draft night April 24):**
 1. **Re-run `05_predict_2026.R`** with actual picks and actual drafting teams
 2. **Update team dev features** — now computed automatically in B6 from `mock_team`;

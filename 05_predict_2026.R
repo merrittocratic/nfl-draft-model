@@ -346,6 +346,66 @@ for (.col in num_na_features) {
   if (!.col %in% names(prospects_2026)) prospects_2026[[.col]] <- NA_real_
 }
 
+# --- B5b: DOB join — draft age features from data/DOB_26.csv ---------------
+# Two name formats in the file:
+#   "Firstname Lastname"  (dynastyleaguefootball.com)
+#   "Lastname, Firstname" (establishtherun.com — quoted in CSV)
+# Normalize both to "Firstname Lastname", then std_name() for join key.
+# De-dup after normalization (keep first row per key — DOB values agree across
+# sources when both cover the same player).
+DRAFT_DATE_2026 <- as.Date("2026-04-24")
+
+dob_raw <- tryCatch(
+  read_csv("data/DOB_26.csv", show_col_types = FALSE),
+  error = function(e) { cli::cli_alert_warning("data/DOB_26.csv not found — skipping DOB join"); NULL }
+)
+
+if (!is.null(dob_raw)) {
+  dob_clean <- dob_raw |>
+    mutate(
+      # Detect "Lastname, Firstname" pattern and reverse; otherwise keep as-is
+      name_norm = if_else(
+        str_detect(Player, ","),
+        str_trim(paste(
+          str_trim(str_extract(Player, "(?<=,).*")),   # everything after comma
+          str_trim(str_extract(Player, "^[^,]+"))      # everything before comma
+        )),
+        str_trim(Player)
+      ),
+      .key    = std_name(name_norm),
+      dob     = mdy(Birthdate)
+    ) |>
+    filter(!is.na(dob)) |>
+    distinct(.key, .keep_all = TRUE) |>
+    select(.key, dob)
+
+  prospects_2026 <- prospects_2026 |>
+    mutate(.key = std_name(player_name)) |>
+    left_join(dob_clean, by = ".key") |>
+    mutate(
+      draft_age        = if_else(!is.na(dob),
+                                 as.integer(floor(as.numeric(difftime(DRAFT_DATE_2026, dob, units = "days")) / 365.25)),
+                                 NA_integer_),
+      college_years    = if_else(!is.na(draft_age),
+                                 pmin(pmax(as.integer(round(draft_age - 18L)), 1L), 6L),
+                                 NA_integer_),
+      is_underclassman = if_else(!is.na(college_years),
+                                 as.integer(college_years <= 3L),
+                                 NA_integer_)
+    ) |>
+    select(-.key, -dob)
+
+  n_matched <- sum(!is.na(prospects_2026$draft_age))
+  cli::cli_alert_success("DOB matched: {n_matched} / {nrow(prospects_2026)} prospects")
+
+  # Percentile rank within (model_group × round_num) — same scheme as training.
+  # Computed within the 2026 cohort; NAs stay NA.
+  prospects_2026 <- prospects_2026 |>
+    group_by(model_group, round_num) |>
+    mutate(draft_age_pctile_in_group = percent_rank(draft_age)) |>
+    ungroup()
+}
+
 # --- B6: Team development features (pre-draft: mock team; draft night: actual team) ---------
 # mock_team in the CSV is a full team name; draft_fe uses PFR-style 3-letter abbrevs.
 # Mapping covers all 32 current franchises plus legacy names that appear in training data.
