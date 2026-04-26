@@ -1,0 +1,20 @@
+# Claude Code context exclusions
+
+# Data — large binaries, model artifacts, raw scraped data (867MB total)
+data/
+
+# Output figures
+output/figures/
+
+# R environment artifacts
+.Rproj.user/
+.Rhistory
+.RData
+*.RDataTmp
+
+# Cache files
+data/mockdraftable_cache/
+
+# Secrets
+.env
+.secrets/
