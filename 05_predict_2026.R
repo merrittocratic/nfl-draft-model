@@ -104,7 +104,7 @@ name_aliases <- c(
 # "Las Vegas Raiders") for each pick as it happens, then point this read_csv call at the new
 # file. All other columns (player, position, college, big_board_rank, status, confidence)
 # carry over unchanged. Re-run after each round or at end of night.
-mock_raw <- read_csv("data/combined_board_mock_20260405.csv", show_col_types = FALSE) |>
+mock_raw <- read_csv("data/combined_board_actual_20260424.csv", show_col_types = FALSE) |>
   mutate(
     player   = coalesce(name_aliases[player], player),
     # DL in mock board maps to IDL in our position taxonomy
@@ -838,6 +838,10 @@ player_cards <- scored_2026 |>
 
 write_csv(player_cards, "output/2026_player_cards.csv")
 cli::cli_alert_success("Saved output/2026_player_cards.csv ({nrow(player_cards)} prospects)")
+
+# Save full scored data for downstream content scripts (SHAP, etc.)
+saveRDS(scored_2026, "data/05_scored_2026.rds")
+cli::cli_alert_success("Saved data/05_scored_2026.rds")
 
 # Preview: R1/R2 prospects by boom probability
 cli::cli_h2("R1/R2 boom leaderboard")

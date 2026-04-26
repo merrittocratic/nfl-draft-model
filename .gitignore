@@ -23,6 +23,10 @@ output/figures/**/*.png
 output/figures/**/*.jpg
 output/figures/**/*.svg
 
+# Feature dictionary (generated HTML output)
+feature_dictionary.html
+feature_dictionary_files/
+
 # PFR download artifacts
 sportsref_download*
 
