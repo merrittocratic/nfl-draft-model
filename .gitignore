@@ -1,6 +1,7 @@
 # Data (regenerated from scripts or sourced externally)
 data/*.rds
 data/*.csv
+data/**/*.rds
 data/**/*.csv
 
 # R artifacts
@@ -14,6 +15,7 @@ output/models/*.rds
 
 # Generated CSVs (content outputs — regenerate from scripts)
 output/*.csv
+output/**/*.csv
 
 # Generated figures (binary outputs — regenerate from scripts)
 output/figures/*.png
