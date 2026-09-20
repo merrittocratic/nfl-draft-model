@@ -41,24 +41,53 @@ pull -- they use almost entirely different data.
 2. **Pull real game and season data via cfbfastR.** For team/coach/game
    storylines, this is the WHOLE job -- there is no cache for any of
    this in the repo (everything cached here is player-level draft-class
-   production, 2002-2025 only), so every pull here is a live API call:
+   production, 2002-2025 only), so every pull here is a live API call.
+
+   **DEFAULT lens is per-game, not season-long** -- these storylines are
+   almost always about a specific week's result, and season-aggregate
+   ratings answer a different question (who's been better all year) than
+   the one usually being asked (what actually happened in this game).
+   Lead with:
    - `cfbfastR::cfbd_game_info(year, week)` or `cfbd_games()` -- schedule
-     and final scores for a specific game or team/week.
+     and final score for the specific game.
+   - `cfbfastR::cfbd_pbp_data(year, week, team, epa_wpa = TRUE)` --
+     play-by-play for that specific game. **Filter to scrimmage plays
+     only** (`play_type %in% c("Rush","Pass Reception","Pass
+     Incompletion","Sack","Rushing Touchdown","Passing Touchdown", ...)`)
+     before averaging EPA -- special teams/penalty/timeout rows dilute
+     or invert the number (confirmed 2026-09-20: an unfiltered pull on
+     the Ole Miss-LSU Sept 19 game gave the WRONG team the EPA edge;
+     filtered to scrimmage plays it correctly showed Ole Miss ahead,
+     0.271 vs 0.167). Favor EPA/success-rate framing over raw yardage --
+     it travels better into "why," not just "what."
+
+   **Season-long context is secondary, cited explicitly as such, and
+   only pulled in when it adds something the game-level number can't
+   say on its own** (e.g. "LSU's offense has actually been better than
+   this one result suggests" or "Ole Miss's trajectory under the new
+   coach"):
+   - `cfbfastR::cfbd_ratings_sp(year)` -- Bill Connelly's SP+ overall/
+     offense/defense ratings, opponent-adjusted, season-to-date. Always
+     label it as season-long when citing it next to a single-game EPA
+     number -- they answer different questions and a reader (or Steve)
+     can misread a season rating as describing the one game.
    - `cfbfastR::cfbd_stats_season_team(year)` -- season-aggregate team
      stats (points/yards for and against, etc.) -- good for "how has
      this team trended all year" claims.
-   - `cfbfastR::cfbd_pbp_data(year, week, team)` -- play-by-play for a
-     specific game. Favor EPA/success-rate framing over raw yardage
-     when it's available in the pull -- same reasoning as the NFL
-     version of this skill: it travels better into "why," not just
-     "what."
    - **Coaching-change comparisons** (the Kiffin shape): pull multiple
      seasons of `cfbd_stats_season_team()` / `cfbd_game_info()` for the
      school, and split by coaching regime. No existing helper does this
      -- build the year range and label each season by coach manually.
-   - Rate-limit awareness: `01c_load_college_stats.R`'s own pattern
-     sleeps 0.3s between calls (`safe_pull()`) -- worth the same
-     courtesy on fresh multi-call pulls here.
+
+   **Never state an EPA/success-rate/SP+ number from memory or estimate
+   it -- always run the actual pull.** A wrong-direction number reads
+   exactly as confident as a right one.
+
+   Rate-limit awareness: `01c_load_college_stats.R`'s own pattern
+   sleeps 0.3s between calls (`safe_pull()`) -- worth the same
+   courtesy on fresh multi-call pulls here. Account is CFBD Tier 3
+   (higher REST limits + GraphQL access), so this throttle is likely
+   more conservative than required -- not yet re-tuned against it.
 
 3. **Only if a specific draft-eligible prospect or a school's
    position-group track record is actually part of the storyline**,
