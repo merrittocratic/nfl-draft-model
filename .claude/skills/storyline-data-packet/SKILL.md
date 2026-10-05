@@ -58,8 +58,83 @@ pull -- they use almost entirely different data.
      or invert the number (confirmed 2026-09-20: an unfiltered pull on
      the Ole Miss-LSU Sept 19 game gave the WRONG team the EPA edge;
      filtered to scrimmage plays it correctly showed Ole Miss ahead,
-     0.271 vs 0.167). Favor EPA/success-rate framing over raw yardage --
-     it travels better into "why," not just "what."
+     0.271 vs 0.167).
+   - `cfbfastR::cfbd_game_box_advanced(game_id)` -- CFBD's advanced box
+     score for that game: PPA and success rate by quarter, explosiveness,
+     havoc (front seven / DB), line yards, stuff rate, field position,
+     scoring opportunities and points per opportunity. Cheap second
+     lens on the same game; use it alongside the pbp numbers.
+   - `cfbfastR::cfbd_drives(year, week, team)` -- drive-level results
+     (start position, plays, outcome) for "how the game turned" claims.
+
+   **Pull the full stat menu, not EPA alone (changed 2026-10-05 to match
+   boxscore-prophet's 2026-10-01 change).** EPA and success rate stay
+   core in every storyline, but they are one lens among several -- the
+   Week 4 2026 packets here led nearly every bullet with EPA/play,
+   which is the staleness boxscore-prophet flagged. Pull every family
+   below that applies to the storyline's teams AND opponents, lead each
+   bullet with whichever stat tells that point most clearly, and rotate
+   families across bullets so no single metric carries the packet. When
+   two families disagree (e.g. a defense 40th in PPA allowed but 11th
+   in explosiveness allowed), that disagreement is itself a nugget --
+   report both.
+
+   **Stat menu** (season ranks among all FBS or among P4 -- name the
+   pool every time, see like-for-like below):
+   - *Scoring/volume:* points per game for/against, yards per play,
+     points per scoring opportunity (trip inside the 40), time of
+     possession, penalties/penalty yards
+     (`cfbd_stats_season_team`, `cfbd_stats_season_advanced`).
+   - *Passing (off/def):* completion %, yards per attempt, sacks,
+     INTs, explosive passes (20+), passing PPA and success rate.
+   - *Rushing (off/def):* yards per carry, line yards, stuff rate,
+     power success (short-yardage conversion), explosive runs (10+),
+     rushing PPA and success rate.
+   - *Situational:* 3rd/4th-down conversion %, red-zone/scoring-
+     opportunity efficiency, turnover margin, havoc rate, field
+     position (average starting spot).
+   - *Efficiency:* EPA/play (pbp) or PPA (CFBD -- same concept,
+     different source; never mix the two in one comparison), success
+     rate, explosiveness, standard-down vs passing-down splits.
+   - *Ratings (season-long, opponent-adjusted -- label as such):* SP+
+     (`cfbd_ratings_sp`), FPI (`cfbd_ratings_fpi`), SRS
+     (`cfbd_ratings_srs`), Elo (`cfbd_ratings_elo`). When ratings
+     disagree with each other or with the poll, that's a nugget.
+   - *Roster context (CFB-specific, no NFL analogue):* 247 talent
+     composite (`cfbd_team_talent`) for "underperforming its talent"
+     claims; returning production (`cfbd_player_returning`) for
+     "rebuild year" or "experience" claims.
+   - *Players (when a storyline turns on one):*
+     `cfbd_game_player_stats` / `cfbd_stats_season_player` for box
+     scores, `cfbd_metrics_ppa_players_season` for player PPA.
+
+   **Two things make a "for real?" claim concrete instead of vibes:**
+   - **Trend:** is the good (or bad) stuff steady across games, or is
+     one outlier game carrying the season line? Build a short per-game
+     log and say which.
+   - **Who they did it against:** opponents' own SP+ (or PPA rank),
+     FCS games called out separately, and a prior-season baseline for
+     "back" / "collapse" claims. 4-0 against a schedule averaging -12
+     SP+ (Nebraska, W4 2026) is a different story than 3-1 against
+     contenders.
+
+   **Like-for-like comparisons (ported from boxscore-prophet's
+   2026-10-03 rule):** any comparison across seasons, teams, coaching
+   regimes, or conferences uses the SAME stat, the SAME side (offense /
+   defense / net), the SAME source, and a stated pool on both ends.
+   Never pair one source's rank with another's (W4 2026 USC packet here
+   put SP+ offense 3rd next to PPA offense 18th -- flagged, but it
+   should have been one or the other, labeled). Name the pool every
+   time ("119th of 138 FBS", "9th of 68 P4"). Partial seasons vs full
+   seasons get the game count stated ("2026, 5 games"). If the
+   like-for-like number isn't pulled, pull it before writing the
+   bullet.
+
+   **Record-vs-underlying mismatches:** flag close-game results
+   (one-score wins/losses), turnover margin, non-offensive and
+   special-teams TDs, and failed 2-pt / missed-kick swings -- but only
+   when this team's data actually shows them, never as a stock
+   explanation (see step 4).
 
    **Season-long context is secondary, cited explicitly as such, and
    only pulled in when it adds something the game-level number can't
@@ -128,6 +203,17 @@ pull -- they use almost entirely different data.
      but the box score shows it wasn't the offensive scheme gap
      everyone assumes -- it was turnovers, or a specific matchup. Report
      the real mechanism, not just confirmation of the headline.
+   - **Score-implied illusion** (ported from boxscore-prophet): find
+     what the final score itself implies that the underlying data does
+     not support. W4 2026 Florida 52, Ole Miss 28 read as "dominant,"
+     but per-play efficiency was nearly even (0.318 vs 0.277 EPA/play)
+     and it was 24-21 late in the 3rd -- a strip-sack broke it open.
+     Same move on Iowa 20, Michigan 19: the loser out-EPA'd the winner,
+     and the margin was a kick-return TD plus a failed 2-pt try.
+   The generalizable move is to check what the scoreline or headline
+   implies against the data -- not to apply a stock explanation
+   (turnovers, defense) out of habit when this game's data doesn't
+   back it.
 
 5. **Across the packet as a whole, lean toward genuinely surprising
    finds but don't suppress agreement or manufacture a contrarian angle
@@ -167,6 +253,10 @@ pull -- they use almost entirely different data.
   in Public Log already uses) -- never into this repo's `output/` or a
   `content/` folder here.
 
+- **First use of any advanced/jargon stat gets a plain-language gloss
+  inline** -- one short clause, not a paragraph (ported from
+  boxscore-prophet). Later mentions of the same stat can go bare.
+
 ### Plain-language glossary (reuse this phrasing, only for terms actually used in a given packet)
 
 - **EPA (Expected Points Added):** how many points a play added or cost
@@ -176,6 +266,25 @@ pull -- they use almost entirely different data.
 - **Success rate:** share of plays that kept the offense "on schedule"
   (roughly 50% of yards-to-go on 1st down, 70% on 2nd, 100% on 3rd/4th)
   -- a hit-rate stat, not a big-play stat.
+- **PPA (Predicted Points Added):** College Football Data's own version
+  of EPA -- same idea, different model. Use PPA or EPA within one
+  comparison, never both.
+- **Explosiveness:** average value of a team's successful plays -- how
+  big the good plays are, as opposed to how often they happen.
+- **Havoc rate:** share of plays where the defense records a tackle for
+  loss, forced fumble, interception, or pass breakup.
+- **Line yards / stuff rate:** rushing yards credited to the offensive
+  line (first few yards of each run, weighted); share of runs stopped at
+  or behind the line.
+- **Points per scoring opportunity:** points per drive that reaches the
+  opponent's 40 -- finishing drives, not just moving the ball.
+- **FPI / SRS / Elo:** other season-long team ratings (ESPN's predictive
+  index; margin adjusted for schedule; a win/loss rating that updates
+  each game). Label as season-long, like SP+.
+- **Talent composite:** 247Sports' roster talent score, built from
+  recruiting rankings -- for "underperforming its talent" claims.
+- **Returning production:** share of last season's production (by
+  yards/snaps) still on the roster.
 - **AV (Approximate Value):** Pro Football Reference's career-value
   metric -- only relevant for a prospect/draft-stock storyline, define
   on first use per `CONTENT_GUIDE.md`.
@@ -198,5 +307,9 @@ Chat output, organized by storyline, each with a short list of sourced
 bullets tagged by source category (cfbfastR game/season data / model --
 only when actually used / program-pipeline -- only when actually used)
 so Merrittocracy can see at a glance what's public-record vs.
-house-differentiated. Close by naming anything that came back weaker or
-contrary to the proposed storyline, not just the supporting facts.
+house-differentiated. Rotate stat families across bullets (see the stat
+menu in step 2) -- if every bullet in a storyline leads with EPA, rework
+it. End each storyline with a one-line verdict (e.g. "for real:
+efficiency and schedule both back the record" / "the score is ahead of
+the underlying numbers"). Close by naming anything that came back weaker
+or contrary to the proposed storyline, not just the supporting facts.
