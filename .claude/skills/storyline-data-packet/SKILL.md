@@ -39,9 +39,33 @@ pull -- they use almost entirely different data.
    final score everyone already saw on TV.
 
 2. **Pull real game and season data via cfbfastR.** For team/coach/game
-   storylines, this is the WHOLE job -- there is no cache for any of
-   this in the repo (everything cached here is player-level draft-class
-   production, 2002-2025 only), so every pull here is a live API call.
+   storylines, this is the WHOLE job.
+
+   **EPA means cfbfastR play-by-play EPA -- never CFBD's PPA (decided
+   2026-10-05).** They come from different expected-points models and
+   disagree badly (W5 2026 Missouri vs Florida: 0.251 EPA/play vs 0.415
+   PPA/play), so mixing them reads as contradictory numbers. PPA columns
+   from any CFBD endpoint (`cfbd_game_box_advanced`,
+   `cfbd_stats_season_advanced`, `cfbd_metrics_ppa_*`) never appear in a
+   packet, not even relabeled as EPA. Those endpoints are still used for
+   their NON-expected-points stats (line yards, stuff rate, havoc, power
+   success, explosiveness, field position).
+
+   **Play-by-play is cached -- use `cfb_pbp_cache.R`, don't call
+   `cfbd_pbp_data()` directly:**
+   ```r
+   source("cfb_pbp_cache.R")
+   pbp <- load_cfb_pbp(2026)            # all completed weeks
+   cfb_team_epa(pbp)                    # season off/def/net EPA + FBS ranks + pool size
+   cfb_team_epa(pbp, by = "game")       # per-game log
+   cfb_scrimmage(pbp)                   # the house scrimmage filter, for custom cuts
+   ```
+   Each week is cached to `data/cfb_pbp/pbp_<season>_w<NN>.rds`
+   (gitignored) once every game in it is final; a fresh week takes
+   ~80s. `refresh = TRUE` re-pulls (stat corrections). Prior-season
+   baselines and multi-season comparisons (e.g. a DC-regime split) use
+   the same loader with that season -- first pull of a full season is
+   ~20 min, then it's cached for good.
 
    **DEFAULT lens is per-game, not season-long** -- these storylines are
    almost always about a specific week's result, and season-aggregate
@@ -50,20 +74,24 @@ pull -- they use almost entirely different data.
    Lead with:
    - `cfbfastR::cfbd_game_info(year, week)` or `cfbd_games()` -- schedule
      and final score for the specific game.
-   - `cfbfastR::cfbd_pbp_data(year, week, team, epa_wpa = TRUE)` --
-     play-by-play for that specific game. **Filter to scrimmage plays
-     only** (`play_type %in% c("Rush","Pass Reception","Pass
-     Incompletion","Sack","Rushing Touchdown","Passing Touchdown", ...)`)
-     before averaging EPA -- special teams/penalty/timeout rows dilute
-     or invert the number (confirmed 2026-09-20: an unfiltered pull on
-     the Ole Miss-LSU Sept 19 game gave the WRONG team the EPA edge;
-     filtered to scrimmage plays it correctly showed Ole Miss ahead,
-     0.271 vs 0.167).
+   - Play-by-play for that game from `load_cfb_pbp()`, filtered with
+     `cfb_scrimmage()` before averaging EPA -- special teams/penalty/
+     timeout rows dilute or invert the number (confirmed 2026-09-20: an
+     unfiltered pull on the Ole Miss-LSU Sept 19 game gave the WRONG
+     team the EPA edge; filtered, it correctly showed Ole Miss ahead,
+     0.271 vs 0.167). `cfb_scrimmage()` warns on any play type it
+     doesn't recognize -- check it rather than ignoring it.
+     **It also drops garbage time by default** (Connelly's margins: >43
+     Q1, >37 Q2, >27 Q3, >22 Q4). cfbfastR's EP model includes score
+     margin and produces nonsense in blowouts (W2 2026 Miami-FAMU:
+     8 yds/rush scored as -0.41 EPA/rush; unfiltered, Miami's season
+     offense ranked 56th, filtered 6th). Say "excluding garbage time"
+     the first time EPA appears in a packet. Season EPA ranks are NOT
+     opponent-adjusted -- pair them with SP+ when schedule matters.
    - `cfbfastR::cfbd_game_box_advanced(game_id)` -- CFBD's advanced box
-     score for that game: PPA and success rate by quarter, explosiveness,
-     havoc (front seven / DB), line yards, stuff rate, field position,
-     scoring opportunities and points per opportunity. Cheap second
-     lens on the same game; use it alongside the pbp numbers.
+     score for that game. Use it for explosiveness, havoc (front seven /
+     DB), line yards, stuff rate, power success, field position and
+     scoring opportunities -- NOT its PPA columns (see above).
    - `cfbfastR::cfbd_drives(year, week, team)` -- drive-level results
      (start position, plays, outcome) for "how the game turned" claims.
 
@@ -75,7 +103,7 @@ pull -- they use almost entirely different data.
    below that applies to the storyline's teams AND opponents, lead each
    bullet with whichever stat tells that point most clearly, and rotate
    families across bullets so no single metric carries the packet. When
-   two families disagree (e.g. a defense 40th in PPA allowed but 11th
+   two families disagree (e.g. a defense 40th in EPA allowed but 11th
    in explosiveness allowed), that disagreement is itself a nugget --
    report both.
 
@@ -86,16 +114,16 @@ pull -- they use almost entirely different data.
      possession, penalties/penalty yards
      (`cfbd_stats_season_team`, `cfbd_stats_season_advanced`).
    - *Passing (off/def):* completion %, yards per attempt, sacks,
-     INTs, explosive passes (20+), passing PPA and success rate.
+     INTs, explosive passes (20+), passing EPA and success rate.
    - *Rushing (off/def):* yards per carry, line yards, stuff rate,
      power success (short-yardage conversion), explosive runs (10+),
-     rushing PPA and success rate.
+     rushing EPA and success rate.
    - *Situational:* 3rd/4th-down conversion %, red-zone/scoring-
      opportunity efficiency, turnover margin, havoc rate, field
      position (average starting spot).
-   - *Efficiency:* EPA/play (pbp) or PPA (CFBD -- same concept,
-     different source; never mix the two in one comparison), success
-     rate, explosiveness, standard-down vs passing-down splits.
+   - *Efficiency:* EPA/play (offense, defense, net; pass and rush
+     splits) from `cfb_team_epa()`, success rate, explosiveness,
+     standard-down vs passing-down splits (compute from cached pbp).
    - *Ratings (season-long, opponent-adjusted -- label as such):* SP+
      (`cfbd_ratings_sp`), FPI (`cfbd_ratings_fpi`), SRS
      (`cfbd_ratings_srs`), Elo (`cfbd_ratings_elo`). When ratings
@@ -106,13 +134,15 @@ pull -- they use almost entirely different data.
      "rebuild year" or "experience" claims.
    - *Players (when a storyline turns on one):*
      `cfbd_game_player_stats` / `cfbd_stats_season_player` for box
-     scores, `cfbd_metrics_ppa_players_season` for player PPA.
+     scores; player EPA computed from cached pbp (`passer_player_name`,
+     `rusher_player_name`, `receiver_player_name` columns), not CFBD's
+     player PPA.
 
    **Two things make a "for real?" claim concrete instead of vibes:**
    - **Trend:** is the good (or bad) stuff steady across games, or is
      one outlier game carrying the season line? Build a short per-game
      log and say which.
-   - **Who they did it against:** opponents' own SP+ (or PPA rank),
+   - **Who they did it against:** opponents' own SP+ (or EPA rank),
      FCS games called out separately, and a prior-season baseline for
      "back" / "collapse" claims. 4-0 against a schedule averaging -12
      SP+ (Nebraska, W4 2026) is a different story than 3-1 against
@@ -123,7 +153,7 @@ pull -- they use almost entirely different data.
    regimes, or conferences uses the SAME stat, the SAME side (offense /
    defense / net), the SAME source, and a stated pool on both ends.
    Never pair one source's rank with another's (W4 2026 USC packet here
-   put SP+ offense 3rd next to PPA offense 18th -- flagged, but it
+   put SP+ offense 3rd next to CFBD PPA offense 18th -- flagged, but it
    should have been one or the other, labeled). Name the pool every
    time ("119th of 138 FBS", "9th of 68 P4"). Partial seasons vs full
    seasons get the game count stated ("2026, 5 games"). If the
@@ -266,9 +296,9 @@ pull -- they use almost entirely different data.
 - **Success rate:** share of plays that kept the offense "on schedule"
   (roughly 50% of yards-to-go on 1st down, 70% on 2nd, 100% on 3rd/4th)
   -- a hit-rate stat, not a big-play stat.
-- **PPA (Predicted Points Added):** College Football Data's own version
-  of EPA -- same idea, different model. Use PPA or EPA within one
-  comparison, never both.
+- **PPA:** not used in packets (see step 2). If a reader asks why our
+  EPA differs from a number on collegefootballdata.com, it's because
+  that site's "PPA" is a different expected-points model.
 - **Explosiveness:** average value of a team's successful plays -- how
   big the good plays are, as opposed to how often they happen.
 - **Havoc rate:** share of plays where the defense records a tackle for
